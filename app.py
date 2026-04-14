@@ -18,7 +18,7 @@ try:
     client = get_gspread_client()
     
     # ⚠️ INCOLLA QUI IL NOME ESATTO DEL TUO FILE GOOGLE SHEETS
-    NOME_FILE = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?usp=sharing" 
+    NOME_FILE = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?pli=1&gid=0#gid=0" 
     sheet = client.open(NOME_FILE).sheet1
 
     st.title("🏋️‍♂️ Maschera di Inserimento Sedi")
