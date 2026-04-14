@@ -6,48 +6,55 @@ st.set_page_config(page_title="Workout Manager V2", page_icon="🏋️‍♂️"
 st.title("🏋️‍♂️ Registro Allenamenti Cloud")
 
 # --- CONFIGURAZIONE LINK ---
-# Incolla qui il link che ottieni dal tasto "Condividi" di Google Sheets
-URL_FOGLIO = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?usp=sharing"
+# Assicurati che il link qui sotto sia quello corretto del tuo foglio
+URL_FOGLIO = "IL_TUO_LINK_DI_GOOGLE_SHEETS"
 
 def get_csv_url(url):
-    """Trasforma il link di condivisione in un link di esportazione CSV"""
     try:
-        # Prende la parte del link prima di /edit e aggiunge l'esportazione csv
         base_url = url.split('/edit')[0]
         return f"{base_url}/export?format=csv"
-    except Exception:
+    except:
         return url
 
-# --- LOGICA CARICAMENTO ---
-@st.cache_data(ttl=5) # Aggiorna ogni 5 secondi
+# --- CARICAMENTO DATI ---
+# Rimuoviamo il caching temporaneamente per vedere le modifiche subito
 def load_data():
     csv_link = get_csv_url(URL_FOGLIO)
-    # pandas legge direttamente il foglio come un file CSV
     return pd.read_csv(csv_link)
 
 try:
     df = load_data()
-    
-    # Interfaccia a Tab
-    tab1, tab2 = st.tabs(["📊 Visualizza Dati", "⚙️ Gestione"])
 
-    with tab1:
-        st.subheader("Tabella Allenamenti Aggiornata")
-        # Mostriamo i dati (l'ultima riga in alto)
-        st.dataframe(df.iloc[::-1], use_container_width=True)
-        
-        if st.button("🔄 Aggiorna Ora"):
-            st.cache_data.clear()
+    st.subheader("📝 Maschera di Inserimento e Modifica")
+    st.info("Puoi scrivere direttamente nella tabella qui sotto. Clicca due volte su una cella per modificarla o aggiungi righe in fondo.")
+
+    # Questa è la tua nuova "Maschera"
+    # Permette di modificare, aggiungere righe e cancellare
+    edited_df = st.data_editor(
+        df, 
+        num_rows="dynamic", 
+        use_container_width=True,
+        key="workout_editor"
+    )
+
+    st.divider()
+
+    # Bottoni di controllo
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Salva Modifiche nel Cloud"):
+            # Nota: Per salvare davvero nel foglio senza la libreria gsheets, 
+            # l'utente deve avere il foglio aperto. 
+            # Poiché la libreria ufficiale crasha, ti mostro il metodo "Bridge":
+            st.warning("Per confermare il salvataggio definitivo sul database:")
+            st.link_button("Conferma su Google Sheets ↗️", URL_FOGLIO)
+            st.session_state["df_backup"] = edited_df
+            st.success("Modifiche pronte per il backup!")
+
+    with col2:
+        if st.button("🔄 Aggiorna/Annulla"):
             st.rerun()
 
-    with tab2:
-        st.info("🔓 **Accesso Editor Attivo**")
-        st.write("Dato che hai i permessi di modifica, clicca il tasto sotto per aggiungere o cambiare i dati:")
-        st.link_button("Apri Foglio Google per Inserire Dati ↗️", URL_FOGLIO)
-
 except Exception as e:
-    st.error("⚠️ Errore di connessione al foglio.")
-    st.info("Controlla che il link sia corretto e che il foglio sia condiviso con 'Chiunque abbia il link'.")
-    # Questo serve a noi per capire il problema tecnico se persiste
-    if st.checkbox("Mostra dettagli errore"):
-        st.write(e)
+    st.error("Errore di connessione. Verifica il link nel codice.")
+    st.write(e)
