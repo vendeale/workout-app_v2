@@ -7,7 +7,7 @@ st.title("🏋️‍♂️ Registro Allenamenti Cloud")
 
 # --- CONFIGURAZIONE LINK ---
 # Assicurati che il link qui sotto sia quello corretto del tuo foglio
-URL_FOGLIO = "IL_TUO_LINK_DI_GOOGLE_SHEETS"
+URL_FOGLIO = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?usp=sharing"
 
 def get_csv_url(url):
     try:
