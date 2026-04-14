@@ -9,13 +9,15 @@ st.set_page_config(page_title="Workout Manager V2", page_icon="🚴‍♂️", l
 
 @st.cache_resource
 def get_gspread_client():
+    # Definiamo gli scope per Sheets e Drive
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    # Carichiamo le credenziali dai Secrets di Streamlit
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     return gspread.authorize(creds)
 
 try:
     client = get_gspread_client()
-    # ID del tuo foglio Google
+    # ID univoco del tuo foglio Google
     ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4" 
     spreadsheet = client.open_by_key(ID_FOGLIO)
     sheet = spreadsheet.sheet1 
@@ -36,6 +38,7 @@ try:
             with c3:
                 cognome = st.text_input("Cognome")
             with c4:
+                # DATA DI NASCITA: Opzionale
                 data_nascita = st.date_input(
                     "Data di Nascita", 
                     value=None, 
@@ -49,6 +52,7 @@ try:
             st.markdown("##### 📅 Dati Sessione")
             c5, c6, c7, c8 = st.columns(4)
             with c5:
+                # DATA PEDALATA: MANDATORIA
                 data_pedalata = st.date_input(
                     "Data Pedalata", 
                     value=None, 
@@ -59,6 +63,7 @@ try:
             with c7:
                 programma = st.text_input("Programma")
             with c8:
+                # LIVELLO: Alfanumerico (Testo + Numeri)
                 livello = st.text_input("Livello")
 
             # --- SEZIONE PERFORMANCE ---
@@ -72,6 +77,7 @@ try:
             with c11:
                 calorie = st.number_input("Calorie", min_value=0, step=1, value=0)
             with c12:
+                # SEDE: MANDATORIA (grazie al controllo nel submit)
                 sede = st.selectbox("Sede", ["", "Prati", "Corso Trieste"])
 
             c13, c14, c15, c16 = st.columns(4)
@@ -88,34 +94,45 @@ try:
             submit = st.form_submit_button("🚀 Salva Dati Sessione")
 
             if submit:
+                # --- LOGICA DI VALIDAZIONE ---
+                errori = []
                 if data_pedalata is None:
-                    st.error("⚠️ Errore: La 'Data Pedalata' è obbligatoria!")
+                    errori.append("Data Pedalata")
+                if sede == "":
+                    errori.append("Sede")
+                
+                if errori:
+                    st.error(f"⚠️ Campi obbligatori mancanti: {', '.join(errori)}")
                 else:
+                    # Formattazione date (Nascita opzionale, Pedalata obbligatoria)
                     data_nascita_str = data_nascita.strftime("%d/%m/%Y") if data_nascita else ""
                     data_pedalata_str = data_pedalata.strftime("%d/%m/%Y")
 
+                    # Preparazione riga per Google Sheets (16 colonne)
                     nuova_riga = [
-                        nome_cognome,
-                        nome,
-                        cognome,
-                        fc_attuale,
-                        data_nascita_str,
-                        data_pedalata_str,
-                        sessione,
-                        programma,
-                        livello,
-                        kmh,
-                        km,
-                        calorie,
-                        sede,
-                        fc_min,
-                        fc_max,
-                        fc_media
+                        nome_cognome,   # A
+                        nome,           # B
+                        cognome,        # C
+                        fc_attuale,     # D
+                        data_nascita_str, # E
+                        data_pedalata_str, # F
+                        sessione,       # G
+                        programma,      # H
+                        livello,        # I
+                        kmh,            # J
+                        km,             # K
+                        calorie,        # L
+                        sede,           # M
+                        fc_min,         # N
+                        fc_max,         # O
+                        fc_media        # P
                     ]
                     
+                    # Invio dati
                     sheet.append_row(nuova_riga)
-                    st.success(f"✅ Sessione registrata con successo!")
+                    st.success(f"✅ Sessione salvata con successo per la sede di {sede}!")
                     st.balloons()
+                    # Reset della cache per vedere subito i nuovi dati in tabella
                     st.cache_data.clear()
 
     # --- VISUALIZZAZIONE STORICO ---
@@ -124,9 +141,12 @@ try:
     dati = sheet.get_all_records()
     if dati:
         df = pd.DataFrame(dati)
+        # Visualizziamo le ultime righe inserite in alto
         st.dataframe(df.iloc[::-1], use_container_width=True)
+    else:
+        st.info("Nessun dato presente nel database.")
 
 except Exception as e:
-    st.error("Si è verificato un errore di comunicazione.")
-    if st.checkbox("Mostra Log Tecnico"):
+    st.error("Si è verificato un errore di connessione.")
+    if st.checkbox("Mostra dettagli tecnici"):
         st.code(e)
