@@ -28,30 +28,40 @@ try:
             st.markdown("<h3 style='text-align: center; color: #ff4b4b;'>Richards Fitness</h3>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
 
-    # --- SEZIONE: RICERCA ATLETA (TUTTO IL DATABASE) ---
+    # --- SEZIONE: RICERCA RAPIDA ATLETA (TUTTO IL DATABASE) ---
     st.divider()
     with st.expander("🔍 **RICERCA RAPIDA ATLETA (Tutto l'archivio)**", expanded=False):
-        search_query = st.text_input("Inserisci il Nome o il Cognome:", placeholder="Es. Ciocchetta...")
+        c_search1, c_search2 = st.columns(2)
+        with c_search1:
+            search_nome = st.text_input("Filtra per Nome:", placeholder="Es. Mario")
+        with c_search2:
+            search_cognome = st.text_input("Filtra per Cognome:", placeholder="Es. Rossi")
         
-        if search_query:
+        if search_nome or search_cognome:
             dati_raw_search = sheet.get_all_records()
             if dati_raw_search:
                 df_totale = pd.DataFrame(dati_raw_search)
                 df_totale.columns = [str(c).strip() for c in df_totale.columns]
                 
-                mask = (
-                    df_totale['Nome'].astype(str).str.contains(search_query, case=False, na=False) | 
-                    df_totale['Cognome'].astype(str).str.contains(search_query, case=False, na=False)
-                )
+                # Logica di filtraggio combinata
+                mask = pd.Series([True] * len(df_totale))
+                
+                if search_nome:
+                    mask &= df_totale['Nome'].astype(str).str.contains(search_nome.strip(), case=False, na=False)
+                
+                if search_cognome:
+                    mask &= df_totale['Cognome'].astype(str).str.contains(search_cognome.strip(), case=False, na=False)
+                
                 risultati = df_totale[mask]
                 
                 if not risultati.empty:
-                    st.success(f"Trovate {len(risultati)} sessioni totali per '{search_query}'")
-                    colonne_target = ["Data Pedalata", "Programma", "Livello", "Km totali", "Sede", "FC Media"]
+                    st.success(f"Trovate {len(risultati)} sessioni totali")
+                    # Inseriamo Nome e Cognome nelle colonne per distinguere eventuali omonimi nei risultati
+                    colonne_target = ["Nome", "Cognome", "Data Pedalata", "Programma", "Livello", "Km totali", "Sede", "FC Media"]
                     colonne_presenti = [c for c in colonne_target if c in df_totale.columns]
                     st.dataframe(risultati[colonne_presenti].iloc[::-1], use_container_width=True)
                 else:
-                    st.warning(f"Nessun risultato trovato per '{search_query}'")
+                    st.warning("Nessun risultato trovato per i criteri inseriti.")
 
     # --- MASCHERA DI INSERIMENTO ---
     st.divider()
