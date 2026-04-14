@@ -1,34 +1,139 @@
 import streamlit as st
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 
-# Configurazione Pagina
+# --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Workout Manager V2", page_icon="🏋️‍♂️", layout="wide")
-st.title("🏋️‍♂️ Registro Allenamenti Cloud")
 
-# Link del tuo foglio (quello che abbiamo visto funzionare)
-URL_FOGLIO = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?usp=sharing"
+# --- CONNESSIONE GOOGLE SHEETS ---
+@st.cache_resource
+def get_gspread_client():
+    scope = ["https://www.googleapis.com/auth/spreadsheets"]
+    # Carica le credenziali dai Secrets di Streamlit
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    return gspread.authorize(creds)
 
-def get_csv_url(url):
-    try:
-        base_url = url.split('/edit')[0]
-        return f"{base_url}/export?format=csv"
-    except:
-        return url
-
-# Caricamento dati
 try:
-    csv_link = get_csv_url(URL_FOGLIO)
-    df = pd.read_csv(csv_link)
+    client = get_gspread_client()
     
-    st.subheader("Storico Allenamenti")
-    st.dataframe(df.iloc[::-1], use_container_width=True)
-    
+    # ⚠️ ATTENZIONE: Incolla qui il NOME ESATTO del tuo file Google Sheets
+    # Esempio: "Registro_Allenamenti"
+    NOME_FILE = "IL_NOME_DEL_TUO_FILE" 
+    sheet = client.open(NOME_FILE).sheet1
+
+    st.title("🏋️‍♂️ Maschera di Inserimento Sedi")
+
+    # --- MASCHERA DI INSERIMENTO (La tua richiesta originale) ---
+    with st.container(border=True):
+        st.subheader("📝 Registra Nuova Sessione")
+        with st.form("workout_form", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                data = st.date_input("Data Allenamento")
+                sede = st.selectbox("Sede", ["Sede 1", "Sede 2"])
+            with c2:
+                esercizio = st.text_input("Esercizio")
+                carico = st.number_input("Carico (kg)", step=0.5)
+            with c3:
+                serie_rep = st.text_input("Serie x Rep (es. 4x12)")
+                note = st.text_input("Note/Feedback")
+
+            submit = st.form_submit_button("Salva nel Database Cloud")
+
+            if submit:
+                # Creiamo la riga
+                nuova_riga = [str(data), sede, esercizio, carico, serie_rep, note]
+                # Scrittura diretta sul foglio
+                sheet.append_row(nuova_riga)
+                st.success("✅ Dati inviati con successo!")
+                st.balloons()
+
+    # --- VISUALIZZAZIONE STORICO ---
     st.divider()
-    st.link_button("➕ Apri Foglio per Inserire Dati", URL_FOGLIO)
+    st.subheader("📊 Storico Allenamenti Aggiornato")
     
-    if st.button("🔄 Aggiorna Tabella"):
-        st.cache_data.clear()
+    # Leggiamo i dati per mostrarli nell'app
+    dati = sheet.get_all_records()
+    if dati:
+        df = pd.DataFrame(dati)
+        # Mostra la tabella con l'ultima riga inserita in alto
+        st.dataframe(df.iloc[::-1], use_container_width=True)
+    
+    if st.button("🔄 Forza Aggiornamento Tabella"):
         st.rerun()
 
 except Exception as e:
-    st.error("Errore di connessione. Verifica il link del foglio.")
+    st.error("⚠️ Errore di connessione o permessi.")
+    st.info("Assicurati di aver condiviso il foglio Google con l'email del Service Account.")
+    if st.checkbox("Mostra dettagli errore"):
+        st.write(e)import streamlit as st
+import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
+
+# --- CONFIGURAZIONE PAGINA ---
+st.set_page_config(page_title="Workout Manager V2", page_icon="🏋️‍♂️", layout="wide")
+
+# --- CONNESSIONE GOOGLE SHEETS ---
+@st.cache_resource
+def get_gspread_client():
+    scope = ["https://www.googleapis.com/auth/spreadsheets"]
+    # Carica le credenziali dai Secrets di Streamlit
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    return gspread.authorize(creds)
+
+try:
+    client = get_gspread_client()
+    
+    # ⚠️ ATTENZIONE: Incolla qui il NOME ESATTO del tuo file Google Sheets
+    # Esempio: "Registro_Allenamenti"
+    NOME_FILE = "IL_NOME_DEL_TUO_FILE" 
+    sheet = client.open(NOME_FILE).sheet1
+
+    st.title("🏋️‍♂️ Maschera di Inserimento Sedi")
+
+    # --- MASCHERA DI INSERIMENTO (La tua richiesta originale) ---
+    with st.container(border=True):
+        st.subheader("📝 Registra Nuova Sessione")
+        with st.form("workout_form", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                data = st.date_input("Data Allenamento")
+                sede = st.selectbox("Sede", ["Sede 1", "Sede 2"])
+            with c2:
+                esercizio = st.text_input("Esercizio")
+                carico = st.number_input("Carico (kg)", step=0.5)
+            with c3:
+                serie_rep = st.text_input("Serie x Rep (es. 4x12)")
+                note = st.text_input("Note/Feedback")
+
+            submit = st.form_submit_button("Salva nel Database Cloud")
+
+            if submit:
+                # Creiamo la riga
+                nuova_riga = [str(data), sede, esercizio, carico, serie_rep, note]
+                # Scrittura diretta sul foglio
+                sheet.append_row(nuova_riga)
+                st.success("✅ Dati inviati con successo!")
+                st.balloons()
+
+    # --- VISUALIZZAZIONE STORICO ---
+    st.divider()
+    st.subheader("📊 Storico Allenamenti Aggiornato")
+    
+    # Leggiamo i dati per mostrarli nell'app
+    dati = sheet.get_all_records()
+    if dati:
+        df = pd.DataFrame(dati)
+        # Mostra la tabella con l'ultima riga inserita in alto
+        st.dataframe(df.iloc[::-1], use_container_width=True)
+    
+    if st.button("🔄 Forza Aggiornamento Tabella"):
+        st.rerun()
+
+except Exception as e:
+    st.error("⚠️ Errore di connessione o permessi.")
+    st.info("Assicurati di aver condiviso il foglio Google con l'email del Service Account.")
+    if st.checkbox("Mostra dettagli errore"):
+        st.write(e)
