@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Workout Manager V3", page_icon="🚴‍♂️", layout="wide")
@@ -28,15 +28,15 @@ try:
             st.markdown("<h3 style='text-align: center; color: #ff4b4b;'>Richards Fitness</h3>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
 
-    # --- SEZIONE: RICERCA ATLETA ---
+    # --- SEZIONE: RICERCA ATLETA (TUTTO IL DATABASE) ---
     st.divider()
-    with st.expander("🔍 **RICERCA RAPIDA ATLETA**", expanded=False):
-        search_query = st.text_input("Inserisci il Nome o il Cognome dell'atleta:", placeholder="Es. Ciocchetta...")
+    with st.expander("🔍 **RICERCA RAPIDA ATLETA (Tutto l'archivio)**", expanded=False):
+        search_query = st.text_input("Inserisci il Nome o il Cognome:", placeholder="Es. Ciocchetta...")
         
         if search_query:
-            dati_totali = sheet.get_all_records()
-            if dati_totali:
-                df_totale = pd.DataFrame(dati_totali)
+            dati_raw = sheet.get_all_records()
+            if dati_raw:
+                df_totale = pd.DataFrame(dati_raw)
                 df_totale.columns = [str(c).strip() for c in df_totale.columns]
                 
                 mask = (
@@ -46,12 +46,12 @@ try:
                 risultati = df_totale[mask]
                 
                 if not risultati.empty:
-                    st.success(f"Trovate {len(risultati)} sessioni per '{search_query}'")
+                    st.success(f"Trovate {len(risultati)} sessioni totali per '{search_query}'")
                     colonne_target = ["Data Pedalata", "Programma", "Livello", "Km totali", "Sede", "FC Media"]
                     colonne_presenti = [c for c in colonne_target if c in df_totale.columns]
                     st.dataframe(risultati[colonne_presenti].iloc[::-1], use_container_width=True)
                 else:
-                    st.warning(f"Nessun atleta trovato con il nome '{search_query}'")
+                    st.warning(f"Nessun risultato trovato per '{search_query}'")
 
     # --- MASCHERA DI INSERIMENTO ---
     st.divider()
@@ -88,7 +88,7 @@ try:
             if submit:
                 prog_fin = prog_extra if prog_sel == "Altro..." else prog_sel
                 if not nome or not cognome or not data_pedalata or not prog_fin or not sede:
-                    st.error("⚠️ Compila tutti i campi obbligatori!")
+                    st.error("⚠️ Compila i campi obbligatori!")
                 else:
                     nome_completo = f"{nome} {cognome}".strip()
                     row = [
@@ -98,28 +98,48 @@ try:
                         livello, kmh, km, calorie, sede, 0, 0, 0
                     ]
                     sheet.append_row(row)
-                    st.success("Dati salvati con successo!")
+                    st.success("Dati salvati!")
                     st.cache_data.clear()
 
-    # --- STORICO GLOBALE (ELENCO COMPLETO) ---
+    # --- STORICO GLOBALE (ULTIMI 6 MESI) ---
     st.divider()
-    st.subheader("📊 Ultime Sessioni Globali")
+    st.subheader("📊 Ultime Sessioni Globali (Ultimi 6 mesi)")
+    
     dati_raw = sheet.get_all_records()
     if dati_raw:
         df_globale = pd.DataFrame(dati_raw)
-        # Rimosso .head(10) per mostrare TUTTO lo storico
-        st.dataframe(df_globale.iloc[::-1], use_container_width=True)
+        df_globale.columns = [str(c).strip() for c in df_globale.columns]
+        
+        # Logica di filtraggio temporale
+        try:
+            # Convertiamo la colonna Data Pedalata in formato datetime
+            df_globale['Data_dt'] = pd.to_datetime(df_globale['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
+            
+            # Calcoliamo la data di 6 mesi fa
+            sei_mesi_fa = datetime.now() - timedelta(days=180)
+            
+            # Filtriamo il dataframe
+            df_filtrato = df_globale[df_globale['Data_dt'] >= sei_mesi_fa].copy()
+            df_filtrato = df_filtrato.drop(columns=['Data_dt']) # Rimuoviamo la colonna tecnica
+            
+            if not df_filtrato.empty:
+                st.dataframe(df_filtrato.iloc[::-1], use_container_width=True)
+            else:
+                st.info("Nessuna sessione registrata negli ultimi 6 mesi.")
+        except:
+            # Se la conversione fallisce (es. formati data errati nel foglio), mostriamo tutto
+            st.dataframe(df_globale.iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ Cancella inserimento errato"):
             opzioni = [{"label": f"{r.get('Nome', '')} {r.get('Cognome', '')} - {r.get('Data Pedalata', '')}", "idx": i+2} for i, r in enumerate(dati_raw)]
-            sel = st.selectbox("Seleziona riga da eliminare:", opzioni, format_func=lambda x: x["label"])
+            sel = st.selectbox("Seleziona riga:", opzioni, format_func=lambda x: x["label"])
             if st.button("Elimina definitivamente"):
                 sheet.delete_rows(sel["idx"])
                 st.cache_data.clear()
                 st.rerun()
     else:
-        st.info("Nessun dato presente nel database.")
+        st.info("Nessun dato presente.")
 
 except Exception as e:
-    st.error("Si è verificato un errore critico.")
+    st.error("Errore critico.")
     st.exception(e)
