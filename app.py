@@ -3,11 +3,15 @@ import pandas as pd
 
 # 1. Configurazione Pagina
 st.set_page_config(page_title="Workout Manager V2", page_icon="🏋️‍♂️", layout="wide")
-st.title("🏋️‍♂️ Registro Allenamenti Cloud")
+
+st.title("🏋️‍♂️ Workout Manager Cloud")
 
 # --- CONFIGURAZIONE LINK ---
-# Assicurati che il link qui sotto sia quello corretto del tuo foglio
+# Incolla qui il link del tuo foglio Google (Condiviso: Chiunque abbia il link può visualizzare)
 URL_FOGLIO = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?usp=sharing"
+
+# Incolla qui il link del tuo Google Form
+URL_FORM = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?pli=1&gid=1160386155#gid=1160386155"
 
 def get_csv_url(url):
     try:
@@ -16,45 +20,29 @@ def get_csv_url(url):
     except:
         return url
 
-# --- CARICAMENTO DATI ---
-# Rimuoviamo il caching temporaneamente per vedere le modifiche subito
-def load_data():
-    csv_link = get_csv_url(URL_FOGLIO)
-    return pd.read_csv(csv_link)
+# --- INTERFACCIA ---
+tab1, tab2 = st.tabs(["📝 Inserisci Allenamento", "📊 Storico Dati"])
 
-try:
-    df = load_data()
+with tab1:
+    st.subheader("Nuova Sessione")
+    st.info("Compila i campi qui sotto per salvare l'allenamento nel database cloud.")
+    
+    # Inseriamo il Google Form come maschera d'inserimento
+    st.components.v1.iframe(URL_FORM, height=800, scrolling=True)
 
-    st.subheader("📝 Maschera di Inserimento e Modifica")
-    st.info("Puoi scrivere direttamente nella tabella qui sotto. Clicca due volte su una cella per modificarla o aggiungi righe in fondo.")
-
-    # Questa è la tua nuova "Maschera"
-    # Permette di modificare, aggiungere righe e cancellare
-    edited_df = st.data_editor(
-        df, 
-        num_rows="dynamic", 
-        use_container_width=True,
-        key="workout_editor"
-    )
-
-    st.divider()
-
-    # Bottoni di controllo
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("💾 Salva Modifiche nel Cloud"):
-            # Nota: Per salvare davvero nel foglio senza la libreria gsheets, 
-            # l'utente deve avere il foglio aperto. 
-            # Poiché la libreria ufficiale crasha, ti mostro il metodo "Bridge":
-            st.warning("Per confermare il salvataggio definitivo sul database:")
-            st.link_button("Conferma su Google Sheets ↗️", URL_FOGLIO)
-            st.session_state["df_backup"] = edited_df
-            st.success("Modifiche pronte per il backup!")
-
-    with col2:
-        if st.button("🔄 Aggiorna/Annulla"):
+with tab2:
+    st.subheader("Dati Sincronizzati")
+    try:
+        csv_link = get_csv_url(URL_FOGLIO)
+        # Leggiamo i dati (usiamo un trucco per forzare l'aggiornamento)
+        df = pd.read_csv(csv_link)
+        
+        # Mostra la tabella (i più recenti in alto)
+        st.dataframe(df.iloc[::-1], use_container_width=True)
+        
+        if st.button("🔄 Aggiorna Tabella"):
+            st.cache_data.clear()
             st.rerun()
-
-except Exception as e:
-    st.error("Errore di connessione. Verifica il link nel codice.")
-    st.write(e)
+            
+    except Exception as e:
+        st.error("In attesa dei dati... Assicurati che il link del foglio sia corretto.")
