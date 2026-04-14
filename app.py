@@ -36,7 +36,6 @@ try:
             with c3:
                 cognome = st.text_input("Cognome")
             with c4:
-                # DATA DI NASCITA: Opzionale e non pre-valorizzata
                 data_nascita = st.date_input(
                     "Data di Nascita", 
                     value=None, 
@@ -50,7 +49,6 @@ try:
             st.markdown("##### 📅 Dati Sessione")
             c5, c6, c7, c8 = st.columns(4)
             with c5:
-                # DATA PEDALATA: Obbligatoria e non pre-valorizzata
                 data_pedalata = st.date_input(
                     "Data Pedalata", 
                     value=None, 
@@ -61,7 +59,6 @@ try:
             with c7:
                 programma = st.text_input("Programma")
             with c8:
-                # LIVELLO: Testo libero (accetta numeri e lettere)
                 livello = st.text_input("Livello")
 
             # --- SEZIONE PERFORMANCE ---
@@ -70,12 +67,11 @@ try:
             c9, c10, c11, c12 = st.columns(4)
             with c9:
                 kmh = st.number_input("Km/h", min_value=0.0, step=0.1, value=0.0)
-            with col10 := c10:
+            with c10:
                 km = st.number_input("Km totali", min_value=0.0, step=0.1, value=0.0)
-            with col11 := c11:
+            with c11:
                 calorie = st.number_input("Calorie", min_value=0, step=1, value=0)
-            with col12 := c12:
-                # SEDI SPECIFICHE RICHIESTE
+            with c12:
                 sede = st.selectbox("Sede", ["", "Prati", "Corso Trieste"])
 
             c13, c14, c15, c16 = st.columns(4)
@@ -92,36 +88,33 @@ try:
             submit = st.form_submit_button("🚀 Salva Dati Sessione")
 
             if submit:
-                # Controllo mandatorio solo su Data Pedalata
                 if data_pedalata is None:
-                    st.error("⚠️ Errore: La 'Data Pedalata' è obbligatoria per il salvataggio!")
+                    st.error("⚠️ Errore: La 'Data Pedalata' è obbligatoria!")
                 else:
-                    # Formattazione date in stringa per il foglio (GG/MM/AAAA)
                     data_nascita_str = data_nascita.strftime("%d/%m/%Y") if data_nascita else ""
                     data_pedalata_str = data_pedalata.strftime("%d/%m/%Y")
 
-                    # Creazione riga (16 colonne totali)
                     nuova_riga = [
-                        nome_cognome,   # A
-                        nome,           # B
-                        cognome,        # C
-                        fc_attuale,     # D
-                        data_nascita_str, # E
-                        data_pedalata_str, # F
-                        sessione,       # G
-                        programma,      # H
-                        livello,        # I
-                        kmh,            # J
-                        km,             # K
-                        calorie,        # L
-                        sede,           # M
-                        fc_min,         # N
-                        fc_max,         # O
-                        fc_media        # P
+                        nome_cognome,
+                        nome,
+                        cognome,
+                        fc_attuale,
+                        data_nascita_str,
+                        data_pedalata_str,
+                        sessione,
+                        programma,
+                        livello,
+                        kmh,
+                        km,
+                        calorie,
+                        sede,
+                        fc_min,
+                        fc_max,
+                        fc_media
                     ]
                     
                     sheet.append_row(nuova_riga)
-                    st.success(f"✅ Sessione registrata con successo nel database!")
+                    st.success(f"✅ Sessione registrata con successo!")
                     st.balloons()
                     st.cache_data.clear()
 
@@ -131,12 +124,9 @@ try:
     dati = sheet.get_all_records()
     if dati:
         df = pd.DataFrame(dati)
-        # Mostra la tabella invertita (ultimo inserimento in alto)
         st.dataframe(df.iloc[::-1], use_container_width=True)
-    else:
-        st.info("Inizia a inserire dati per visualizzare lo storico.")
 
 except Exception as e:
-    st.error("Si è verificato un errore di comunicazione con il foglio Google.")
+    st.error("Si è verificato un errore di comunicazione.")
     if st.checkbox("Mostra Log Tecnico"):
         st.code(e)
