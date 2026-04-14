@@ -34,9 +34,9 @@ try:
         search_query = st.text_input("Inserisci il Nome o il Cognome:", placeholder="Es. Ciocchetta...")
         
         if search_query:
-            dati_raw = sheet.get_all_records()
-            if dati_raw:
-                df_totale = pd.DataFrame(dati_raw)
+            dati_raw_search = sheet.get_all_records()
+            if dati_raw_search:
+                df_totale = pd.DataFrame(dati_raw_search)
                 df_totale.columns = [str(c).strip() for c in df_totale.columns]
                 
                 mask = (
@@ -101,33 +101,28 @@ try:
                     st.success("Dati salvati!")
                     st.cache_data.clear()
 
-    # --- STORICO GLOBALE (ULTIMI 6 MESI) ---
+    # --- STORICO GLOBALE (ULTIMI 30 GIORNI) ---
     st.divider()
-    st.subheader("📊 Ultime Sessioni Globali (Ultimi 6 mesi)")
+    st.subheader("📊 Ultime Sessioni Globali (Ultimi 30 giorni)")
     
     dati_raw = sheet.get_all_records()
     if dati_raw:
         df_globale = pd.DataFrame(dati_raw)
         df_globale.columns = [str(c).strip() for c in df_globale.columns]
         
-        # Logica di filtraggio temporale
         try:
-            # Convertiamo la colonna Data Pedalata in formato datetime
+            # Filtro temporale a 30 giorni
             df_globale['Data_dt'] = pd.to_datetime(df_globale['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
+            un_mese_fa = datetime.now() - timedelta(days=30)
             
-            # Calcoliamo la data di 6 mesi fa
-            sei_mesi_fa = datetime.now() - timedelta(days=180)
-            
-            # Filtriamo il dataframe
-            df_filtrato = df_globale[df_globale['Data_dt'] >= sei_mesi_fa].copy()
-            df_filtrato = df_filtrato.drop(columns=['Data_dt']) # Rimuoviamo la colonna tecnica
+            df_filtrato = df_globale[df_globale['Data_dt'] >= un_mese_fa].copy()
+            df_filtrato = df_filtrato.drop(columns=['Data_dt'])
             
             if not df_filtrato.empty:
                 st.dataframe(df_filtrato.iloc[::-1], use_container_width=True)
             else:
-                st.info("Nessuna sessione registrata negli ultimi 6 mesi.")
+                st.info("Nessuna sessione registrata negli ultimi 30 giorni.")
         except:
-            # Se la conversione fallisce (es. formati data errati nel foglio), mostriamo tutto
             st.dataframe(df_globale.iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ Cancella inserimento errato"):
