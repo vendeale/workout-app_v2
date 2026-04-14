@@ -19,7 +19,19 @@ try:
     spreadsheet = client.open_by_key(ID_FOGLIO)
     sheet = spreadsheet.sheet1 
 
-    st.title("🚴‍♂️ Workout Manager - Sedi Prati & Corso Trieste")
+    # --- INTESTAZIONE CON LOGO CENTRATO ---
+    # Creiamo 3 colonne: le due laterali servono da "cuscinetto" per centrare la centrale
+    col_l, col_logo, col_r = st.columns([2, 1, 2])
+    with col_logo:
+        # Sostituisci 'logo.png' con il nome del tuo file caricato su GitHub
+        # Se preferisci un link web, puoi mettere l'URL tra virgolette
+        try:
+            st.image("logo.png", use_container_width=True)
+        except:
+            st.write(" Richards Fitness ") # Testo di riserva se il logo non viene trovato
+
+    st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Sedi Prati & Corso Trieste</p>", unsafe_allow_html=True)
 
     # --- MASCHERA DI INSERIMENTO ---
     with st.container(border=True):
@@ -43,14 +55,9 @@ try:
             with c5:
                 sessione = st.text_input("Sessione *")
             with c6:
-                # MENU A TENDINA PROGRAMMA CON OPZIONE LIBERA
                 lista_programmi = ["", "Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."]
                 programma_scelto = st.selectbox("Programma *", options=lista_programmi)
-                
-                # Se l'utente sceglie "Altro...", mostriamo un campo di testo extra fuori dal form? 
-                # No, meglio gestirlo internamente con un trucco di logica.
                 programma_extra = st.text_input("Se hai scelto 'Altro', scrivi qui il programma:")
-                
             with c7:
                 livello = st.text_input("Livello *")
 
@@ -81,14 +88,8 @@ try:
             submit = st.form_submit_button("🚀 Salva Sessione")
 
             if submit:
-                # LOGICA PER DETERMINARE IL PROGRAMMA FINALE
-                programma_finale = ""
-                if programma_scelto == "Altro...":
-                    programma_finale = programma_extra
-                else:
-                    programma_finale = programma_scelto
-
-                # LISTA CONTROLLI MANDATORI
+                programma_finale = programma_extra if programma_scelto == "Altro..." else programma_scelto
+                
                 mancanti = []
                 if not nome: mancanti.append("Nome")
                 if not cognome: mancanti.append("Cognome")
@@ -115,7 +116,7 @@ try:
                     ]
                     
                     sheet.append_row(nuova_riga)
-                    st.success(f"✅ Dati di {nome_completo_auto} salvati con successo!")
+                    st.success(f"✅ Dati salvati con successo!")
                     st.balloons()
                     st.cache_data.clear()
 
@@ -142,7 +143,7 @@ try:
             if st.button("Elimina Definitivamente"):
                 if conferma:
                     sheet.delete_rows(selezione["index"])
-                    st.success(f"Riga eliminata con successo!")
+                    st.success(f"Riga eliminata!")
                     st.cache_data.clear()
                     st.rerun()
     else:
