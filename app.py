@@ -24,12 +24,12 @@ def get_gspread_client():
 try:
     client = get_gspread_client()
     
-    # ⚠️ SOSTITUISCI CON IL NOME ESATTO DEL TUO FOGLIO GOOGLE
-    # Deve essere identico a quello che leggi in alto nel foglio
-    NOME_FILE = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?pli=1&gid=0#gid=0" 
-    sheet = client.open(NOME_FILE).sheet1
+    # ID univoco del tuo foglio Google
+    ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4" 
+    spreadsheet = client.open_by_key(ID_FOGLIO)
+    sheet = spreadsheet.sheet1 # Prende il primo tab del foglio
 
-    st.title("🏋️‍♂️ Maschera di Inserimento Sedi")
+    st.title("🏋️‍♂️ Registro Allenamenti Sedi")
 
     # --- MASCHERA DI INSERIMENTO ---
     with st.container(border=True):
@@ -49,32 +49,34 @@ try:
             submit = st.form_submit_button("Salva nel Database Cloud")
 
             if submit:
-                # Creiamo la riga (assicurati che l'ordine delle colonne sia quello che desideri)
+                # Creiamo la riga da inviare al foglio
                 nuova_riga = [str(data), sede, esercizio, carico, serie_rep, note]
                 # Scrittura sul foglio
                 sheet.append_row(nuova_riga)
                 st.success("✅ Dati inviati con successo!")
                 st.balloons()
+                # Puliamo la cache per forzare il refresh dello storico
+                st.cache_data.clear()
 
     # --- VISUALIZZAZIONE STORICO ---
     st.divider()
     st.subheader("📊 Storico Allenamenti Aggiornato")
     
-    # Leggiamo i dati per mostrarli nell'app
+    # Recupero dati dal foglio
     dati = sheet.get_all_records()
     if dati:
         df = pd.DataFrame(dati)
         # Mostra la tabella con l'ultima riga inserita in alto
         st.dataframe(df.iloc[::-1], use_container_width=True)
     else:
-        st.info("Il database è vuoto. Inserisci il primo allenamento!")
+        st.info("Il database è attualmente vuoto. Inserisci il primo allenamento sopra!")
     
-    if st.button("🔄 Forza Aggiornamento Tabella"):
+    if st.button("🔄 Aggiorna Tabella"):
         st.cache_data.clear()
         st.rerun()
 
 except Exception as e:
     st.error("⚠️ Errore di connessione o permessi.")
-    st.info("Verifica di aver abilitato le API di Google Drive e condiviso il foglio con l'email del Service Account.")
-    if st.checkbox("Mostra dettagli errore"):
+    st.info("Verifica di aver condiviso il foglio con l'email del Service Account (Editor).")
+    if st.checkbox("Mostra dettagli errore per assistenza"):
         st.code(e)
