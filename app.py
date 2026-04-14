@@ -43,7 +43,14 @@ try:
             with c5:
                 sessione = st.text_input("Sessione *")
             with c6:
-                programma = st.text_input("Programma *")
+                # MENU A TENDINA PROGRAMMA CON OPZIONE LIBERA
+                lista_programmi = ["", "Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."]
+                programma_scelto = st.selectbox("Programma *", options=lista_programmi)
+                
+                # Se l'utente sceglie "Altro...", mostriamo un campo di testo extra fuori dal form? 
+                # No, meglio gestirlo internamente con un trucco di logica.
+                programma_extra = st.text_input("Se hai scelto 'Altro', scrivi qui il programma:")
+                
             with c7:
                 livello = st.text_input("Livello *")
 
@@ -74,13 +81,20 @@ try:
             submit = st.form_submit_button("🚀 Salva Sessione")
 
             if submit:
+                # LOGICA PER DETERMINARE IL PROGRAMMA FINALE
+                programma_finale = ""
+                if programma_scelto == "Altro...":
+                    programma_finale = programma_extra
+                else:
+                    programma_finale = programma_scelto
+
                 # LISTA CONTROLLI MANDATORI
                 mancanti = []
                 if not nome: mancanti.append("Nome")
                 if not cognome: mancanti.append("Cognome")
                 if data_pedalata is None: mancanti.append("Data Pedalata")
                 if not sessione: mancanti.append("Sessione")
-                if not programma: mancanti.append("Programma")
+                if not programma_finale: mancanti.append("Programma")
                 if not livello: mancanti.append("Livello")
                 if kmh == 0.0: mancanti.append("Km/h")
                 if km == 0.0: mancanti.append("Km totali")
@@ -90,30 +104,14 @@ try:
                 if mancanti:
                     st.error(f"⚠️ Errore! Compila i seguenti campi obbligatori: {', '.join(mancanti)}")
                 else:
-                    # AUTOMATISMO NOME & COGNOME
                     nome_completo_auto = f"{nome} {cognome}".strip()
-                    
                     data_nascita_str = data_nascita.strftime("%d/%m/%Y") if data_nascita else ""
                     data_pedalata_str = data_pedalata.strftime("%d/%m/%Y")
 
-                    # La Colonna A del tuo foglio riceve il valore generato automaticamente
                     nuova_riga = [
-                        nome_completo_auto, # Colonna A (Nome&Cognome)
-                        nome,               # Colonna B (Nome)
-                        cognome,            # Colonna C (Cognome)
-                        fc_attuale,         # Colonna D (FC Attuale)
-                        data_nascita_str,   # Colonna E
-                        data_pedalata_str,  # Colonna F
-                        sessione,           # Colonna G
-                        programma,          # Colonna H
-                        livello,            # Colonna I
-                        kmh,                # Colonna J
-                        km,                 # Colonna K
-                        calorie,            # Colonna L
-                        sede,               # Colonna M
-                        fc_min,             # Colonna N
-                        fc_max,             # Colonna O
-                        fc_media            # Colonna P
+                        nome_completo_auto, nome, cognome, fc_attuale, data_nascita_str,
+                        data_pedalata_str, sessione, programma_finale, livello, kmh,
+                        km, calorie, sede, fc_min, fc_max, fc_media
                     ]
                     
                     sheet.append_row(nuova_riga)
@@ -124,7 +122,6 @@ try:
     # --- VISUALIZZAZIONE E CANCELLAZIONE ---
     st.divider()
     st.subheader("📊 Storico Sessioni")
-    
     dati_raw = sheet.get_all_records()
     if dati_raw:
         df = pd.DataFrame(dati_raw)
@@ -135,27 +132,19 @@ try:
             st.warning("Attenzione: la cancellazione è definitiva.")
             opzioni_cancellazione = []
             for i, row in enumerate(dati_raw):
-                # Usiamo il campo 'Nome&Cognome' del foglio per l'etichetta se disponibile
                 identificativo = row.get('Nome&Cognome') if row.get('Nome&Cognome') else f"{row.get('Nome')} {row.get('Cognome')}"
                 opzioni_cancellazione.append({
                     "label": f"Riga {i+2}: {identificativo} - {row.get('Data Pedalata')}",
                     "index": i + 2
                 })
-            
-            selezione = st.selectbox("Seleziona la riga da eliminare", 
-                                     options=opzioni_cancellazione, 
-                                     format_func=lambda x: x["label"])
-            
+            selezione = st.selectbox("Seleziona la riga da eliminare", options=opzioni_cancellazione, format_func=lambda x: x["label"])
             conferma = st.checkbox("Confermo di voler eliminare questa riga")
-            
             if st.button("Elimina Definitivamente"):
                 if conferma:
                     sheet.delete_rows(selezione["index"])
                     st.success(f"Riga eliminata con successo!")
                     st.cache_data.clear()
                     st.rerun()
-                else:
-                    st.error("Spunta la casella di conferma.")
     else:
         st.info("Nessun dato presente.")
 
