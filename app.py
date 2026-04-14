@@ -37,11 +37,8 @@ try:
             dati_totali = sheet.get_all_records()
             if dati_totali:
                 df_totale = pd.DataFrame(dati_totali)
-                
-                # PULIZIA COLONNE: Rimuoviamo spazi bianchi invisibili dalle intestazioni del foglio
                 df_totale.columns = [str(c).strip() for c in df_totale.columns]
                 
-                # Filtro su Nome e Cognome (case insensitive)
                 mask = (
                     df_totale['Nome'].astype(str).str.contains(search_query, case=False, na=False) | 
                     df_totale['Cognome'].astype(str).str.contains(search_query, case=False, na=False)
@@ -50,12 +47,8 @@ try:
                 
                 if not risultati.empty:
                     st.success(f"Trovate {len(risultati)} sessioni per '{search_query}'")
-                    
-                    # Definiamo le colonne che vogliamo mostrare
                     colonne_target = ["Data Pedalata", "Programma", "Livello", "Km totali", "Sede", "FC Media"]
-                    # Filtriamo solo quelle che effettivamente esistono nel foglio per evitare errori
                     colonne_presenti = [c for c in colonne_target if c in df_totale.columns]
-                    
                     st.dataframe(risultati[colonne_presenti].iloc[::-1], use_container_width=True)
                 else:
                     st.warning(f"Nessun atleta trovato con il nome '{search_query}'")
@@ -108,16 +101,16 @@ try:
                     st.success("Dati salvati con successo!")
                     st.cache_data.clear()
 
-    # --- STORICO GLOBALE ---
+    # --- STORICO GLOBALE (ELENCO COMPLETO) ---
     st.divider()
     st.subheader("📊 Ultime Sessioni Globali")
     dati_raw = sheet.get_all_records()
     if dati_raw:
         df_globale = pd.DataFrame(dati_raw)
-        st.dataframe(df_globale.iloc[::-1].head(10), use_container_width=True)
+        # Rimosso .head(10) per mostrare TUTTO lo storico
+        st.dataframe(df_globale.iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ Cancella inserimento errato"):
-            # Usiamo .get() per sicurezza se alcune celle sono vuote
             opzioni = [{"label": f"{r.get('Nome', '')} {r.get('Cognome', '')} - {r.get('Data Pedalata', '')}", "idx": i+2} for i, r in enumerate(dati_raw)]
             sel = st.selectbox("Seleziona riga da eliminare:", opzioni, format_func=lambda x: x["label"])
             if st.button("Elimina definitivamente"):
