@@ -7,7 +7,7 @@ st.title("🏋️‍♂️ Registro Allenamenti Cloud")
 
 # --- CONFIGURAZIONE LINK ---
 # Incolla qui il link che ottieni dal tasto "Condividi" di Google Sheets
-URL_FOGLIO = "IL_TUO_LINK_DI_GOOGLE_SHEETS_QUI"
+URL_FOGLIO = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?usp=sharing"
 
 def get_csv_url(url):
     """Trasforma il link di condivisione in un link di esportazione CSV"""
