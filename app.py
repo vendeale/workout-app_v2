@@ -9,16 +9,24 @@ st.set_page_config(page_title="Workout Manager V2", page_icon="🏋️‍♂️"
 # --- CONNESSIONE GOOGLE SHEETS ---
 @st.cache_resource
 def get_gspread_client():
-    scope = ["https://www.googleapis.com/auth/spreadsheets"]
+    # Autorizzazioni necessarie per Sheets e Drive
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     # Carica le credenziali dai Secrets di Streamlit
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], 
+        scopes=scope
+    )
     return gspread.authorize(creds)
 
 try:
     client = get_gspread_client()
     
-    # ⚠️ INCOLLA QUI IL NOME ESATTO DEL TUO FILE GOOGLE SHEETS
-    NOME_FILE = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?usp=sharing" 
+    # ⚠️ SOSTITUISCI CON IL NOME ESATTO DEL TUO FOGLIO GOOGLE
+    # Deve essere identico a quello che leggi in alto nel foglio
+    NOME_FILE = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?pli=1&gid=0#gid=0" 
     sheet = client.open(NOME_FILE).sheet1
 
     st.title("🏋️‍♂️ Maschera di Inserimento Sedi")
@@ -33,7 +41,7 @@ try:
                 sede = st.selectbox("Sede", ["Sede 1", "Sede 2"])
             with c2:
                 esercizio = st.text_input("Esercizio")
-                carico = st.number_input("Carico (kg)", step=0.5)
+                carico = st.number_input("Carico (kg)", step=0.5, min_value=0.0)
             with c3:
                 serie_rep = st.text_input("Serie x Rep (es. 4x12)")
                 note = st.text_input("Note/Feedback")
@@ -41,9 +49,9 @@ try:
             submit = st.form_submit_button("Salva nel Database Cloud")
 
             if submit:
-                # Creiamo la riga
+                # Creiamo la riga (assicurati che l'ordine delle colonne sia quello che desideri)
                 nuova_riga = [str(data), sede, esercizio, carico, serie_rep, note]
-                # Scrittura diretta sul foglio
+                # Scrittura sul foglio
                 sheet.append_row(nuova_riga)
                 st.success("✅ Dati inviati con successo!")
                 st.balloons()
@@ -58,6 +66,8 @@ try:
         df = pd.DataFrame(dati)
         # Mostra la tabella con l'ultima riga inserita in alto
         st.dataframe(df.iloc[::-1], use_container_width=True)
+    else:
+        st.info("Il database è vuoto. Inserisci il primo allenamento!")
     
     if st.button("🔄 Forza Aggiornamento Tabella"):
         st.cache_data.clear()
@@ -65,6 +75,6 @@ try:
 
 except Exception as e:
     st.error("⚠️ Errore di connessione o permessi.")
-    st.info("Assicurati di aver condiviso il foglio Google con l'email del Service Account e che il nome del file sia corretto.")
+    st.info("Verifica di aver abilitato le API di Google Drive e condiviso il foglio con l'email del Service Account.")
     if st.checkbox("Mostra dettagli errore"):
-        st.write(e)
+        st.code(e)
