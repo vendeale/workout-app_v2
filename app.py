@@ -1,17 +1,12 @@
 import streamlit as st
 import pandas as pd
 
-# 1. Configurazione Pagina
+# Configurazione Pagina
 st.set_page_config(page_title="Workout Manager V2", page_icon="🏋️‍♂️", layout="wide")
+st.title("🏋️‍♂️ Registro Allenamenti Cloud")
 
-st.title("🏋️‍♂️ Workout Manager Cloud")
-
-# --- CONFIGURAZIONE LINK ---
-# Incolla qui il link del tuo foglio Google (Condiviso: Chiunque abbia il link può visualizzare)
-URL_FOGLIO = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?usp=sharing"
-
-# Incolla qui il link del tuo Google Form
-URL_FORM = "https://docs.google.com/spreadsheets/d/1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4/edit?pli=1&gid=1160386155#gid=1160386155"
+# Link del tuo foglio (quello che abbiamo visto funzionare)
+URL_FOGLIO = "IL_TUO_LINK_DI_GOOGLE_SHEETS"
 
 def get_csv_url(url):
     try:
@@ -20,29 +15,20 @@ def get_csv_url(url):
     except:
         return url
 
-# --- INTERFACCIA ---
-tab1, tab2 = st.tabs(["📝 Inserisci Allenamento", "📊 Storico Dati"])
-
-with tab1:
-    st.subheader("Nuova Sessione")
-    st.info("Compila i campi qui sotto per salvare l'allenamento nel database cloud.")
+# Caricamento dati
+try:
+    csv_link = get_csv_url(URL_FOGLIO)
+    df = pd.read_csv(csv_link)
     
-    # Inseriamo il Google Form come maschera d'inserimento
-    st.components.v1.iframe(URL_FORM, height=800, scrolling=True)
+    st.subheader("Storico Allenamenti")
+    st.dataframe(df.iloc[::-1], use_container_width=True)
+    
+    st.divider()
+    st.link_button("➕ Apri Foglio per Inserire Dati", URL_FOGLIO)
+    
+    if st.button("🔄 Aggiorna Tabella"):
+        st.cache_data.clear()
+        st.rerun()
 
-with tab2:
-    st.subheader("Dati Sincronizzati")
-    try:
-        csv_link = get_csv_url(URL_FOGLIO)
-        # Leggiamo i dati (usiamo un trucco per forzare l'aggiornamento)
-        df = pd.read_csv(csv_link)
-        
-        # Mostra la tabella (i più recenti in alto)
-        st.dataframe(df.iloc[::-1], use_container_width=True)
-        
-        if st.button("🔄 Aggiorna Tabella"):
-            st.cache_data.clear()
-            st.rerun()
-            
-    except Exception as e:
-        st.error("In attesa dei dati... Assicurati che il link del foglio sia corretto.")
+except Exception as e:
+    st.error("Errore di connessione. Verifica il link del foglio.")
