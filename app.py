@@ -28,7 +28,7 @@ try:
             st.markdown("<h3 style='text-align: center; color: #ff4b4b;'>Richards Fitness</h3>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
 
-    # --- SEZIONE: RICERCA RAPIDA ATLETA (TUTTO IL DATABASE) ---
+    # --- SEZIONE: RICERCA RAPIDA ATLETA ---
     st.divider()
     with st.expander("🔍 **RICERCA RAPIDA ATLETA (Tutto l'archivio)**", expanded=False):
         c_search1, c_search2 = st.columns(2)
@@ -43,25 +43,20 @@ try:
                 df_totale = pd.DataFrame(dati_raw_search)
                 df_totale.columns = [str(c).strip() for c in df_totale.columns]
                 
-                # Logica di filtraggio combinata
                 mask = pd.Series([True] * len(df_totale))
-                
                 if search_nome:
                     mask &= df_totale['Nome'].astype(str).str.contains(search_nome.strip(), case=False, na=False)
-                
                 if search_cognome:
                     mask &= df_totale['Cognome'].astype(str).str.contains(search_cognome.strip(), case=False, na=False)
                 
                 risultati = df_totale[mask]
-                
                 if not risultati.empty:
                     st.success(f"Trovate {len(risultati)} sessioni totali")
-                    # Inseriamo Nome e Cognome nelle colonne per distinguere eventuali omonimi nei risultati
                     colonne_target = ["Nome", "Cognome", "Data Pedalata", "Programma", "Livello", "Km totali", "Sede", "FC Media"]
                     colonne_presenti = [c for c in colonne_target if c in df_totale.columns]
                     st.dataframe(risultati[colonne_presenti].iloc[::-1], use_container_width=True)
                 else:
-                    st.warning("Nessun risultato trovato per i criteri inseriti.")
+                    st.warning("Nessun risultato trovato.")
 
     # --- MASCHERA DI INSERIMENTO ---
     st.divider()
@@ -77,13 +72,26 @@ try:
             st.divider()
             st.markdown("##### 📅 Sessione e Programma")
             c4, c5, c6, c7 = st.columns(4)
-            with c4: data_pedalata = st.date_input("Data Pedalata *", value=None, format="DD/MM/YYYY")
-            with c5: sessione = st.text_input("Sessione *")
+            with c4: 
+                data_pedalata = st.date_input("Data Pedalata *", value=None, format="DD/MM/YYYY")
+            
+            with c5:
+                lista_sessione = ["", "30 min", "45 min", "Altro..."]
+                sess_sel = st.selectbox("Sessione *", options=lista_sessione)
+                sess_extra = st.text_input("Se 'Altro', specifica durata:")
+            
             with c6:
                 lista_prog = ["", "Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."]
                 prog_sel = st.selectbox("Programma *", options=lista_prog)
-                prog_extra = st.text_input("Se 'Altro', specifica:")
-            with c7: livello = st.text_input("Livello *")
+                prog_extra = st.text_input("Se 'Altro', specifica programma:")
+            
+            with c7:
+                lista_livelli = [
+                    "", "1-resistenza", "2-resistenza", "3-resistenza", 
+                    "1-variabile", "2-variabile", "3-variabile", 
+                    "4-variabile", "5-variabile", "6-variabile"
+                ]
+                livello = st.selectbox("Livello *", options=lista_livelli)
 
             st.divider()
             st.markdown("##### 📈 Performance")
@@ -96,19 +104,22 @@ try:
             submit = st.form_submit_button("🚀 Salva Sessione")
 
             if submit:
+                # Logica per gestire i campi "Altro"
                 prog_fin = prog_extra if prog_sel == "Altro..." else prog_sel
-                if not nome or not cognome or not data_pedalata or not prog_fin or not sede:
+                sess_fin = sess_extra if sess_sel == "Altro..." else sess_sel
+                
+                if not nome or not cognome or not data_pedalata or not prog_fin or not sess_fin or not livello or not sede:
                     st.error("⚠️ Compila i campi obbligatori!")
                 else:
                     nome_completo = f"{nome} {cognome}".strip()
                     row = [
                         nome_completo, nome, cognome, 0, 
                         data_nascita.strftime("%d/%m/%Y") if data_nascita else "",
-                        data_pedalata.strftime("%d/%m/%Y"), sessione, prog_fin, 
+                        data_pedalata.strftime("%d/%m/%Y"), sess_fin, prog_fin, 
                         livello, kmh, km, calorie, sede, 0, 0, 0
                     ]
                     sheet.append_row(row)
-                    st.success("Dati salvati!")
+                    st.success("Dati salvati con successo!")
                     st.cache_data.clear()
 
     # --- STORICO GLOBALE (ULTIMI 30 GIORNI) ---
@@ -121,30 +132,29 @@ try:
         df_globale.columns = [str(c).strip() for c in df_globale.columns]
         
         try:
-            # Filtro temporale a 30 giorni
             df_globale['Data_dt'] = pd.to_datetime(df_globale['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
             un_mese_fa = datetime.now() - timedelta(days=30)
-            
             df_filtrato = df_globale[df_globale['Data_dt'] >= un_mese_fa].copy()
             df_filtrato = df_filtrato.drop(columns=['Data_dt'])
             
             if not df_filtrato.empty:
                 st.dataframe(df_filtrato.iloc[::-1], use_container_width=True)
             else:
-                st.info("Nessuna sessione registrata negli ultimi 30 giorni.")
+                st.info("Nessuna sessione negli ultimi 30 giorni.")
         except:
             st.dataframe(df_globale.iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ Cancella inserimento errato"):
             opzioni = [{"label": f"{r.get('Nome', '')} {r.get('Cognome', '')} - {r.get('Data Pedalata', '')}", "idx": i+2} for i, r in enumerate(dati_raw)]
-            sel = st.selectbox("Seleziona riga:", opzioni, format_func=lambda x: x["label"])
-            if st.button("Elimina definitivamente"):
-                sheet.delete_rows(sel["idx"])
-                st.cache_data.clear()
-                st.rerun()
+            if opzioni:
+                sel = st.selectbox("Seleziona riga da eliminare:", opzioni, format_func=lambda x: x["label"])
+                if st.button("Elimina definitivamente"):
+                    sheet.delete_rows(sel["idx"])
+                    st.cache_data.clear()
+                    st.rerun()
     else:
-        st.info("Nessun dato presente.")
+        st.info("Nessun dato presente nel database.")
 
 except Exception as e:
-    st.error("Errore critico.")
+    st.error("Si è verificato un errore durante il caricamento.")
     st.exception(e)
