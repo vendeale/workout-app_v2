@@ -60,8 +60,8 @@ try:
             risultati = df_totale[mask]
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} sessioni totali")
-                # Filtro colonne rigoroso
-                col_mostrare = [c for c in risultati.columns if "FC" not in c.upper() and "NASCITA" not in c.upper() and "DT" not in c.upper()]
+                # Filtro colonne rigoroso (Ricerca)
+                col_mostrare = [c for c in risultati.columns if not any(x in c.upper() for x in ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"])]
                 st.dataframe(risultati[col_mostrare].iloc[::-1], use_container_width=True)
             else:
                 st.warning("Nessun risultato trovato.")
@@ -112,6 +112,7 @@ try:
                     st.error("⚠️ Compila i campi obbligatori!")
                 else:
                     nome_completo = f"{nome} {cognome}".strip()
+                    # Invio dati al foglio (mantenendo la struttura delle colonne originale)
                     row = [
                         nome_completo, nome, cognome, 0, "", 
                         data_pedalata.strftime("%d/%m/%Y"), sess_f, prog_f, 
@@ -128,7 +129,6 @@ try:
     
     if dati_per_ricerca:
         df_g = pd.DataFrame(dati_per_ricerca)
-        # Pulizia nomi colonne da spazi bianchi
         df_g.columns = [str(c).strip() for c in df_g.columns]
         
         try:
@@ -136,8 +136,9 @@ try:
             limite = datetime.now() - timedelta(days=30)
             df_f = df_g[df_g['Data_dt'] >= limite].copy()
             
-            # FILTRO COLONNE AGGRESSIVO: Nasconde tutto ciò che contiene "FC", "Nascita" o "Data_dt"
-            mostrare = [c for c in df_f.columns if "FC" not in c.upper() and "NASCITA" not in c.upper() and "DT" not in c.upper()]
+            # FILTRO COLONNE TOTALE: Nasconde Frequenza Cardiaca, Nascita e Data_dt
+            parole_chiave_da_escludere = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
+            mostrare = [c for c in df_f.columns if not any(word in c.upper() for word in parole_chiave_da_escludere)]
             
             if not df_f.empty:
                 st.dataframe(df_f[mostrare].iloc[::-1], use_container_width=True)
@@ -145,7 +146,7 @@ try:
                 st.info("Nessuna sessione negli ultimi 30 giorni.")
         except:
             # Fallback se il filtro data fallisce
-            mostrare = [c for c in df_g.columns if "FC" not in c.upper() and "NASCITA" not in c.upper()]
+            mostrare = [c for c in df_g.columns if not any(word in c.upper() for word in ["FREQUENZA", "CARDIACA", "FC", "NASCITA"])]
             st.dataframe(df_g[mostrare].iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ Cancella inserimento errato"):
