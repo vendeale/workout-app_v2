@@ -89,9 +89,10 @@ try:
                 lista_livelli = [
                     "", "1-resistenza", "2-resistenza", "3-resistenza", 
                     "1-variabile", "2-variabile", "3-variabile", 
-                    "4-variabile", "5-variabile", "6-variabile"
+                    "4-variabile", "5-variabile", "6-variabile", "Altro..."
                 ]
-                livello = st.selectbox("Livello *", options=lista_livelli)
+                liv_sel = st.selectbox("Livello *", options=lista_livelli)
+                liv_extra = st.text_input("Se 'Altro', specifica livello:")
 
             st.divider()
             st.markdown("##### 📈 Performance")
@@ -104,11 +105,12 @@ try:
             submit = st.form_submit_button("🚀 Salva Sessione")
 
             if submit:
-                # Logica per gestire i campi "Altro"
+                # Logica per gestire tutti i campi "Altro"
                 prog_fin = prog_extra if prog_sel == "Altro..." else prog_sel
                 sess_fin = sess_extra if sess_sel == "Altro..." else sess_sel
+                liv_fin = liv_extra if liv_sel == "Altro..." else liv_sel
                 
-                if not nome or not cognome or not data_pedalata or not prog_fin or not sess_fin or not livello or not sede:
+                if not nome or not cognome or not data_pedalata or not prog_fin or not sess_fin or not liv_fin or not sede:
                     st.error("⚠️ Compila i campi obbligatori!")
                 else:
                     nome_completo = f"{nome} {cognome}".strip()
@@ -116,7 +118,7 @@ try:
                         nome_completo, nome, cognome, 0, 
                         data_nascita.strftime("%d/%m/%Y") if data_nascita else "",
                         data_pedalata.strftime("%d/%m/%Y"), sess_fin, prog_fin, 
-                        livello, kmh, km, calorie, sede, 0, 0, 0
+                        liv_fin, kmh, km, calorie, sede, 0, 0, 0
                     ]
                     sheet.append_row(row)
                     st.success("Dati salvati con successo!")
