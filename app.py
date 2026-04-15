@@ -61,9 +61,10 @@ try:
             risultati = df_totale[mask]
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} sessioni totali")
-                col_escludere = ["Data di Nascita", "FC Media", "FC Max", "FC Min"]
-                col_mostrare = [c for c in risultati.columns if c not in col_escludere and "Data_dt" not in c]
-                st.dataframe(risultati[col_mostrare].iloc[::-1], use_container_width=True)
+                # Filtro colonne per ricerca
+                escl = ["Data di Nascita", "FC Media", "FC Max", "FC Min"]
+                cols = [c for c in risultati.columns if c not in escl]
+                st.dataframe(risultati[cols].iloc[::-1], use_container_width=True)
             else:
                 st.warning("Nessun risultato trovato.")
 
@@ -84,16 +85,16 @@ try:
             c4, c5, c6, c7 = st.columns(4)
             with c4: data_pedalata = st.date_input("Data Pedalata *", value=None, format="DD/MM/YYYY")
             with c5:
-                lista_sessione = ["", "30 min", "45 min", "Altro..."]
-                sess_sel = st.selectbox("Sessione *", options=lista_sessione)
+                lista_s = ["", "30 min", "45 min", "Altro..."]
+                sess_sel = st.selectbox("Sessione *", options=lista_s)
                 sess_extra = st.text_input("Se 'Altro', specifica durata:")
             with c6:
-                lista_prog = ["", "Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."]
-                prog_sel = st.selectbox("Programma *", options=lista_prog)
+                lista_p = ["", "Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."]
+                prog_sel = st.selectbox("Programma *", options=lista_p)
                 prog_extra = st.text_input("Se 'Altro', specifica programma:")
             with c7:
-                lista_livelli = ["", "1-resistenza", "2-resistenza", "3-resistenza", "1-variabile", "2-variabile", "3-variabile", "4-variabile", "5-variabile", "6-variabile", "Altro..."]
-                liv_sel = st.selectbox("Livello *", options=lista_livelli)
+                lista_l = ["", "1-resistenza", "2-resistenza", "3-resistenza", "1-variabile", "2-variabile", "3-variabile", "4-variabile", "5-variabile", "6-variabile", "Altro..."]
+                liv_sel = st.selectbox("Livello *", options=lista_l)
                 liv_extra = st.text_input("Se 'Altro', specifica livello:")
 
             st.divider()
@@ -106,18 +107,18 @@ try:
             submit = st.form_submit_button("🚀 Salva Sessione")
 
             if submit:
-                prog_fin = prog_extra if prog_sel == "Altro..." else prog_sel
-                sess_fin = sess_extra if sess_sel == "Altro..." else sess_sel
-                liv_fin = liv_extra if liv_sel == "Altro..." else liv_sel
+                prog_f = prog_extra if prog_sel == "Altro..." else prog_sel
+                sess_f = sess_extra if sess_sel == "Altro..." else sess_sel
+                liv_f = liv_extra if liv_sel == "Altro..." else liv_sel
                 
-                if not nome or not cognome or not data_pedalata or not prog_fin or not sess_fin or not liv_fin or not sede:
+                if not nome or not cognome or not data_pedalata or not prog_f or not sess_f or not liv_f or not sede:
                     st.error("⚠️ Compila i campi obbligatori!")
                 else:
                     nome_completo = f"{nome} {cognome}".strip()
                     row = [
                         nome_completo, nome, cognome, 0, "", 
-                        data_pedalata.strftime("%d/%m/%Y"), sess_fin, prog_fin, 
-                        liv_fin, kmh, km, calorie, sede, 0, 0, 0
+                        data_pedalata.strftime("%d/%m/%Y"), sess_f, prog_f, 
+                        liv_f, kmh, km, calorie, sede, 0, 0, 0
                     ]
                     sheet.append_row(row)
                     st.success("Dati salvati!")
@@ -129,13 +130,38 @@ try:
     st.subheader("📊 Ultime Sessioni Globali (Ultimi 30 giorni)")
     
     if dati_per_ricerca:
-        df_globale = pd.DataFrame(dati_per_ricerca)
-        df_globale.columns = [str(c).strip() for c in df_globale.columns]
+        df_g = pd.DataFrame(dati_per_ricerca)
+        df_g.columns = [str(c).strip() for c in df_g.columns]
         
         try:
-            df_globale['Data_dt'] = pd.to_datetime(df_globale['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
-            un_mese_fa = datetime.now() - timedelta(days=30)
-            df_filtrato = df_globale[df_globale['Data_dt'] >= un_mese_fa].copy()
+            df_g['Data_dt'] = pd.to_datetime(df_g['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
+            limite = datetime.now() - timedelta(days=30)
+            df_f = df_g[df_g['Data_dt'] >= limite].copy()
             
-            # Filtro colonne
-            col_nascondere = ["Data di Nascita"] + [c for
+            # Filtro colonne sicuro
+            nascondere = ["Data di Nascita", "Data_dt"] + [c for c in df_f.columns if "FC" in c]
+            mostrare = [c for c in df_f.columns if c not in nascondere]
+            
+            if not df_f.empty:
+                st.dataframe(df_f[mostrare].iloc[::-1], use_container_width=True)
+            else:
+                st.info("Nessuna sessione negli ultimi 30 giorni.")
+        except:
+            nascondere = ["Data di Nascita"] + [c for c in df_g.columns if "FC" in c]
+            mostrare = [c for c in df_g.columns if c not in nascondere]
+            st.dataframe(df_g[mostrare].iloc[::-1], use_container_width=True)
+
+        with st.expander("🗑️ Cancella inserimento errato"):
+            opzioni = [{"label": f"{r.get('Nome', '')} {r.get('Cognome', '')} - {r.get('Data Pedalata', '')}", "idx": i+2} for i, r in enumerate(dati_per_ricerca)]
+            if opzioni:
+                sel = st.selectbox("Seleziona riga:", opzioni, format_func=lambda x: x["label"])
+                if st.button("Elimina definitivamente"):
+                    sheet.delete_rows(sel["idx"])
+                    st.cache_data.clear()
+                    st.rerun()
+    else:
+        st.info("Nessun dato presente.")
+
+except Exception as e:
+    st.error("Errore critico.")
+    st.exception(e)
