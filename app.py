@@ -61,7 +61,6 @@ try:
             risultati = df_totale[mask]
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} sessioni totali")
-                # Visualizzazione filtrata per la ricerca
                 col_escludere = ["Data di Nascita", "FC Media", "FC Max", "FC Min"]
                 col_mostrare = [c for c in risultati.columns if c not in col_escludere and "Data_dt" not in c]
                 st.dataframe(risultati[col_mostrare].iloc[::-1], use_container_width=True)
@@ -74,7 +73,6 @@ try:
         st.subheader("📝 Registra Nuova Sessione")
         with st.form("workout_form", clear_on_submit=True):
             
-            # --- SEZIONE ATLETA (Data di Nascita Rimossa) ---
             st.markdown("##### 👤 Atleta")
             c1, c2, c_sede = st.columns([1, 1, 1])
             with c1: nome = st.text_input("Nome *")
@@ -82,30 +80,23 @@ try:
             with c_sede: sede = st.selectbox("Sede *", ["", "Prati", "Corso Trieste"])
 
             st.divider()
-            
-            # --- SEZIONE SESSIONE ---
             st.markdown("##### 📅 Sessione e Programma")
             c4, c5, c6, c7 = st.columns(4)
             with c4: data_pedalata = st.date_input("Data Pedalata *", value=None, format="DD/MM/YYYY")
-            
             with c5:
                 lista_sessione = ["", "30 min", "45 min", "Altro..."]
                 sess_sel = st.selectbox("Sessione *", options=lista_sessione)
                 sess_extra = st.text_input("Se 'Altro', specifica durata:")
-            
             with c6:
                 lista_prog = ["", "Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."]
                 prog_sel = st.selectbox("Programma *", options=lista_prog)
                 prog_extra = st.text_input("Se 'Altro', specifica programma:")
-            
             with c7:
                 lista_livelli = ["", "1-resistenza", "2-resistenza", "3-resistenza", "1-variabile", "2-variabile", "3-variabile", "4-variabile", "5-variabile", "6-variabile", "Altro..."]
                 liv_sel = st.selectbox("Livello *", options=lista_livelli)
                 liv_extra = st.text_input("Se 'Altro', specifica livello:")
 
             st.divider()
-            
-            # --- SEZIONE PERFORMANCE ---
             st.markdown("##### 📈 Performance")
             c8, c9, c10 = st.columns(3)
             with c8: kmh = st.number_input("Km/h *", min_value=0.0, step=0.1)
@@ -122,3 +113,29 @@ try:
                 if not nome or not cognome or not data_pedalata or not prog_fin or not sess_fin or not liv_fin or not sede:
                     st.error("⚠️ Compila i campi obbligatori!")
                 else:
+                    nome_completo = f"{nome} {cognome}".strip()
+                    row = [
+                        nome_completo, nome, cognome, 0, "", 
+                        data_pedalata.strftime("%d/%m/%Y"), sess_fin, prog_fin, 
+                        liv_fin, kmh, km, calorie, sede, 0, 0, 0
+                    ]
+                    sheet.append_row(row)
+                    st.success("Dati salvati!")
+                    st.cache_data.clear() 
+                    st.rerun()
+
+    # --- STORICO GLOBALE (ULTIMI 30 GIORNI) ---
+    st.divider()
+    st.subheader("📊 Ultime Sessioni Globali (Ultimi 30 giorni)")
+    
+    if dati_per_ricerca:
+        df_globale = pd.DataFrame(dati_per_ricerca)
+        df_globale.columns = [str(c).strip() for c in df_globale.columns]
+        
+        try:
+            df_globale['Data_dt'] = pd.to_datetime(df_globale['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
+            un_mese_fa = datetime.now() - timedelta(days=30)
+            df_filtrato = df_globale[df_globale['Data_dt'] >= un_mese_fa].copy()
+            
+            # Filtro colonne
+            col_nascondere = ["Data di Nascita"] + [c for
