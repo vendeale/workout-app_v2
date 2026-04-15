@@ -61,9 +61,10 @@ try:
             risultati = df_totale[mask]
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} sessioni totali")
-                colonne_target = ["Nome", "Cognome", "Data Pedalata", "Programma", "Livello", "Km totali", "Sede"]
-                colonne_presenti = [c for c in colonne_target if c in df_totale.columns]
-                st.dataframe(risultati[colonne_presenti].iloc[::-1], use_container_width=True)
+                # Visualizzazione filtrata per la ricerca
+                col_escludere = ["Data di Nascita", "FC Media", "FC Max", "FC Min"]
+                col_mostrare = [c for c in risultati.columns if c not in col_escludere and "Data_dt" not in c]
+                st.dataframe(risultati[col_mostrare].iloc[::-1], use_container_width=True)
             else:
                 st.warning("Nessun risultato trovato.")
 
@@ -73,12 +74,11 @@ try:
         st.subheader("📝 Registra Nuova Sessione")
         with st.form("workout_form", clear_on_submit=True):
             
-            # --- SEZIONE ATLETA (CON SEDE) ---
+            # --- SEZIONE ATLETA (Data di Nascita Rimossa) ---
             st.markdown("##### 👤 Atleta")
-            c1, c2, c3, c_sede = st.columns([1, 1, 1, 1])
+            c1, c2, c_sede = st.columns([1, 1, 1])
             with c1: nome = st.text_input("Nome *")
             with c2: cognome = st.text_input("Cognome *")
-            with c3: data_nascita = st.date_input("Data di Nascita", value=None, format="DD/MM/YYYY")
             with c_sede: sede = st.selectbox("Sede *", ["", "Prati", "Corso Trieste"])
 
             st.divider()
@@ -107,7 +107,7 @@ try:
             
             # --- SEZIONE PERFORMANCE ---
             st.markdown("##### 📈 Performance")
-            c8, c9, c10 = st.columns(3) # Ridotto a 3 colonne visto che sede è stata spostata
+            c8, c9, c10 = st.columns(3)
             with c8: kmh = st.number_input("Km/h *", min_value=0.0, step=0.1)
             with c9: km = st.number_input("Km totali *", min_value=0.0, step=0.1)
             with c10: calorie = st.number_input("Calorie *", min_value=0)
@@ -115,7 +115,6 @@ try:
             submit = st.form_submit_button("🚀 Salva Sessione")
 
             if submit:
-                # Gestione logica campi "Altro"
                 prog_fin = prog_extra if prog_sel == "Altro..." else prog_sel
                 sess_fin = sess_extra if sess_sel == "Altro..." else sess_sel
                 liv_fin = liv_extra if liv_sel == "Altro..." else liv_sel
@@ -123,51 +122,3 @@ try:
                 if not nome or not cognome or not data_pedalata or not prog_fin or not sess_fin or not liv_fin or not sede:
                     st.error("⚠️ Compila i campi obbligatori!")
                 else:
-                    nome_completo = f"{nome} {cognome}".strip()
-                    row = [
-                        nome_completo, nome, cognome, 0, 
-                        data_nascita.strftime("%d/%m/%Y") if data_nascita else "",
-                        data_pedalata.strftime("%d/%m/%Y"), sess_fin, prog_fin, 
-                        liv_fin, kmh, km, calorie, sede, 0, 0, 0
-                    ]
-                    sheet.append_row(row)
-                    st.success("Dati salvati! Aggiornamento archivio...")
-                    st.cache_data.clear() 
-                    st.rerun()
-
-    # --- STORICO GLOBALE (ULTIMI 30 GIORNI) ---
-    st.divider()
-    st.subheader("📊 Ultime Sessioni Globali (Ultimi 30 giorni)")
-    
-    if dati_per_ricerca:
-        df_globale = pd.DataFrame(dati_per_ricerca)
-        df_globale.columns = [str(c).strip() for c in df_globale.columns]
-        
-        try:
-            df_globale['Data_dt'] = pd.to_datetime(df_globale['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
-            un_mese_fa = datetime.now() - timedelta(days=30)
-            df_filtrato = df_globale[df_globale['Data_dt'] >= un_mese_fa].copy()
-            df_filtrato = df_filtrato.drop(columns=['Data_dt'])
-            
-            if not df_filtrato.empty:
-                st.dataframe(df_filtrato.iloc[::-1], use_container_width=True)
-            else:
-                st.info("Nessuna sessione negli ultimi 30 giorni.")
-        except:
-            st.dataframe(df_globale.iloc[::-1], use_container_width=True)
-
-        with st.expander("🗑️ Cancella inserimento errato"):
-            opzioni = [{"label": f"{r.get('Nome', '')} {r.get('Cognome', '')} - {r.get('Data Pedalata', '')}", "idx": i+2} for i, r in enumerate(dati_per_ricerca)]
-            if opzioni:
-                sel = st.selectbox("Seleziona riga da eliminare:", opzioni, format_func=lambda x: x["label"])
-                if st.button("Elimina definitivamente"):
-                    sheet.delete_rows(sel["idx"])
-                    st.cache_data.clear()
-                    st.success("Riga eliminata!")
-                    st.rerun()
-    else:
-        st.info("Nessun dato presente.")
-
-except Exception as e:
-    st.error("Errore critico.")
-    st.exception(e)
