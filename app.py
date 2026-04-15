@@ -7,14 +7,14 @@ from datetime import datetime, timedelta
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Workout Manager V3", page_icon="🚴‍♂️", layout="wide")
 
-# --- FUNZIONI DI ACCESSO AI DATI (OTTIMIZZATE CON CACHE) ---
+# --- FUNZIONI DI ACCESSO AI DATI ---
 @st.cache_resource
 def get_gspread_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=600)  # Cache per 10 minuti
+@st.cache_data(ttl=600)
 def fetch_all_data(id_foglio):
     client = get_gspread_client()
     spreadsheet = client.open_by_key(id_foglio)
@@ -27,7 +27,6 @@ try:
     spreadsheet = client.open_by_key(ID_FOGLIO)
     sheet = spreadsheet.sheet1
 
-    # Carichiamo i dati dalla cache
     dati_per_ricerca = fetch_all_data(ID_FOGLIO)
 
     # --- INTESTAZIONE ---
@@ -61,10 +60,9 @@ try:
             risultati = df_totale[mask]
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} sessioni totali")
-                # Filtro colonne per ricerca
-                escl = ["Data di Nascita", "FC Media", "FC Max", "FC Min"]
-                cols = [c for c in risultati.columns if c not in escl]
-                st.dataframe(risultati[cols].iloc[::-1], use_container_width=True)
+                # Filtro colonne rigoroso
+                col_mostrare = [c for c in risultati.columns if "FC" not in c.upper() and "NASCITA" not in c.upper() and "DT" not in c.upper()]
+                st.dataframe(risultati[col_mostrare].iloc[::-1], use_container_width=True)
             else:
                 st.warning("Nessun risultato trovato.")
 
@@ -73,7 +71,6 @@ try:
     with st.container(border=True):
         st.subheader("📝 Registra Nuova Sessione")
         with st.form("workout_form", clear_on_submit=True):
-            
             st.markdown("##### 👤 Atleta")
             c1, c2, c_sede = st.columns([1, 1, 1])
             with c1: nome = st.text_input("Nome *")
@@ -131,6 +128,7 @@ try:
     
     if dati_per_ricerca:
         df_g = pd.DataFrame(dati_per_ricerca)
+        # Pulizia nomi colonne da spazi bianchi
         df_g.columns = [str(c).strip() for c in df_g.columns]
         
         try:
@@ -138,17 +136,16 @@ try:
             limite = datetime.now() - timedelta(days=30)
             df_f = df_g[df_g['Data_dt'] >= limite].copy()
             
-            # Filtro colonne sicuro
-            nascondere = ["Data di Nascita", "Data_dt"] + [c for c in df_f.columns if "FC" in c]
-            mostrare = [c for c in df_f.columns if c not in nascondere]
+            # FILTRO COLONNE AGGRESSIVO: Nasconde tutto ciò che contiene "FC", "Nascita" o "Data_dt"
+            mostrare = [c for c in df_f.columns if "FC" not in c.upper() and "NASCITA" not in c.upper() and "DT" not in c.upper()]
             
             if not df_f.empty:
                 st.dataframe(df_f[mostrare].iloc[::-1], use_container_width=True)
             else:
                 st.info("Nessuna sessione negli ultimi 30 giorni.")
         except:
-            nascondere = ["Data di Nascita"] + [c for c in df_g.columns if "FC" in c]
-            mostrare = [c for c in df_g.columns if c not in nascondere]
+            # Fallback se il filtro data fallisce
+            mostrare = [c for c in df_g.columns if "FC" not in c.upper() and "NASCITA" not in c.upper()]
             st.dataframe(df_g[mostrare].iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ Cancella inserimento errato"):
