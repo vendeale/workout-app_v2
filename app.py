@@ -27,7 +27,7 @@ try:
     spreadsheet = client.open_by_key(ID_FOGLIO)
     sheet = spreadsheet.sheet1
 
-    # Carichiamo i dati una volta sola per tutta l'esecuzione corrente
+    # Carichiamo i dati dalla cache
     dati_per_ricerca = fetch_all_data(ID_FOGLIO)
 
     # --- INTESTAZIONE ---
@@ -39,7 +39,7 @@ try:
             st.markdown("<h3 style='text-align: center; color: #ff4b4b;'>Richards Fitness</h3>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
 
-    # --- SEZIONE: RICERCA RAPIDA ATLETA (USA LA CACHE) ---
+    # --- SEZIONE: RICERCA RAPIDA ATLETA ---
     st.divider()
     with st.expander("🔍 **RICERCA RAPIDA ATLETA (Tutto l'archivio)**", expanded=False):
         c_search1, c_search2 = st.columns(2)
@@ -72,13 +72,18 @@ try:
     with st.container(border=True):
         st.subheader("📝 Registra Nuova Sessione")
         with st.form("workout_form", clear_on_submit=True):
+            
+            # --- SEZIONE ATLETA (CON SEDE) ---
             st.markdown("##### 👤 Atleta")
-            c1, c2, c3 = st.columns([1, 1, 1])
+            c1, c2, c3, c_sede = st.columns([1, 1, 1, 1])
             with c1: nome = st.text_input("Nome *")
             with c2: cognome = st.text_input("Cognome *")
             with c3: data_nascita = st.date_input("Data di Nascita", value=None, format="DD/MM/YYYY")
+            with c_sede: sede = st.selectbox("Sede *", ["", "Prati", "Corso Trieste"])
 
             st.divider()
+            
+            # --- SEZIONE SESSIONE ---
             st.markdown("##### 📅 Sessione e Programma")
             c4, c5, c6, c7 = st.columns(4)
             with c4: data_pedalata = st.date_input("Data Pedalata *", value=None, format="DD/MM/YYYY")
@@ -99,16 +104,18 @@ try:
                 liv_extra = st.text_input("Se 'Altro', specifica livello:")
 
             st.divider()
+            
+            # --- SEZIONE PERFORMANCE ---
             st.markdown("##### 📈 Performance")
-            c8, c9, c10, c11 = st.columns(4)
+            c8, c9, c10 = st.columns(3) # Ridotto a 3 colonne visto che sede è stata spostata
             with c8: kmh = st.number_input("Km/h *", min_value=0.0, step=0.1)
             with c9: km = st.number_input("Km totali *", min_value=0.0, step=0.1)
             with c10: calorie = st.number_input("Calorie *", min_value=0)
-            with c11: sede = st.selectbox("Sede *", ["", "Prati", "Corso Trieste"])
 
             submit = st.form_submit_button("🚀 Salva Sessione")
 
             if submit:
+                # Gestione logica campi "Altro"
                 prog_fin = prog_extra if prog_sel == "Altro..." else prog_sel
                 sess_fin = sess_extra if sess_sel == "Altro..." else sess_sel
                 liv_fin = liv_extra if liv_sel == "Altro..." else liv_sel
@@ -125,7 +132,7 @@ try:
                     ]
                     sheet.append_row(row)
                     st.success("Dati salvati! Aggiornamento archivio...")
-                    st.cache_data.clear() # Svuota la cache per forzare il ricaricamento al prossimo giro
+                    st.cache_data.clear() 
                     st.rerun()
 
     # --- STORICO GLOBALE (ULTIMI 30 GIORNI) ---
