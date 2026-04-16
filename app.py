@@ -48,12 +48,42 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE) and c != 'GOOGLE_SHEET_ROW']
     return df[cols_to_keep].dropna(how='all').copy()
 
-def get_col_name(columns, keywords, avoid=None):
-    for col in columns:
-        c_up = str(col).upper().strip()
-        if any(key.upper() in c_up for key in keywords):
-            if avoid and any(a.upper() in c_up for a in avoid): continue
-            return col
+# --- NUOVA LOGICA DI IDENTIFICAZIONE COLONNE PIÙ PRECISA ---
+def get_exact_col(columns, target):
+    cols_up = [str(c).upper().strip() for c in columns]
+    
+    if target == "KMH":
+        # Cerca specificamente KM/H o VELOCITÀ
+        for i, c in enumerate(cols_up):
+            if "KM/H" in c or "VELOCIT" in c:
+                return columns[i]
+    
+    if target == "KM":
+        # Cerca KM ma ESCLUDE KM/H
+        for i, c in enumerate(cols_up):
+            if "KM" in c and "KM/H" not in c and "VELOCIT" not in c:
+                return columns[i]
+            if "DISTANZA" in c:
+                return columns[i]
+                
+    if target == "DATA":
+        for i, c in enumerate(cols_up):
+            if "DATA" in c and "NASCITA" not in c:
+                return columns[i]
+                
+    if target == "CALORIE":
+        for i, c in enumerate(cols_up):
+            if "CAL" in c or "KCAL" in c:
+                return columns[i]
+                
+    if target == "PROGRAMMA":
+        for i, c in enumerate(cols_up):
+            if "PROGR" in c: return columns[i]
+            
+    if target == "LIVELLO":
+        for i, c in enumerate(cols_up):
+            if "LIV" in c: return columns[i]
+
     return None
 
 # --- GENERAZIONE PDF ---
@@ -64,17 +94,19 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.add_page()
         
         cols = df_atleta.columns.tolist()
-        c_data = get_col_name(cols, ["DATA"], avoid=["NASCITA"])
-        c_km = get_col_name(cols, ["KM", "DISTANZA", "PERCORSO"])
-        c_kmh = get_col_name(cols, ["KM/H", "VELOCIT"])
-        c_cal = get_col_name(cols, ["CALORIE", "KCAL"])
-        c_prog = get_col_name(cols, ["PROGRAMMA"])
-        c_liv = get_col_name(cols, ["LIVELLO"])
+        c_data = get_exact_col(cols, "DATA")
+        c_km = get_exact_col(cols, "KM")
+        c_kmh = get_exact_col(cols, "KMH")
+        c_cal = get_exact_col(cols, "CALORIE")
+        c_prog = get_exact_col(cols, "PROGRAMMA")
+        c_liv = get_exact_col(cols, "LIVELLO")
 
+        # Calcoli per l'intestazione
         km_vals = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
         cal_avg = df_atleta[c_cal].apply(force_numeric).mean() if c_cal else 0.0
 
+        # Header Grafico
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 40, 'F')
         pdf.set_text_color(255, 255, 255)
@@ -84,6 +116,7 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.set_font("helvetica", '', 12)
         pdf.cell(0, 10, f"REPORT PERFORMANCE: {nome_atleta.upper()}", align='C', new_x="LMARGIN", new_y="NEXT")
         
+        # Riepilogo Medie
         pdf.set_y(45)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", 'B', 11)
@@ -93,6 +126,7 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
+        # Intestazione Tabella
         pdf.set_font("helvetica", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -102,24 +136,24 @@ def generate_pdf(df_atleta, nome_atleta):
             pdf.cell(w[i], 8, headers[i], 1, 0, 'C', True)
         pdf.ln()
 
+        # Righe Tabella
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", '', 8)
         for _, row in df_atleta.iterrows():
-            # CORREZIONE 2: Pulizia della data per mostrare solo DD/MM/YYYY
+            # Pulizia Data
             data_val = str(row.get(c_data, ''))
             solo_data = data_val.split(' ')[0] if ' ' in data_val else data_val
             
             pdf.cell(w[0], 7, solo_data, 1, 0, 'C')
             pdf.cell(w[1], 7, str(row.get(c_prog, ''))[:22], 1, 0, 'L')
             pdf.cell(w[2], 7, str(row.get(c_liv, ''))[:20], 1, 0, 'L')
+            # Valori numerici separati correttamente
             pdf.cell(w[3], 7, str(row.get(c_km, '0')), 1, 0, 'C')
             pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C')
             pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C')
 
         pdf_output = pdf.output()
-        if isinstance(pdf_output, bytearray):
-            return bytes(pdf_output)
-        return pdf_output
+        return bytes(pdf_output) if isinstance(pdf_output, bytearray) else pdf_output
 
     except Exception as e:
         st.error(f"Errore generazione PDF: {e}")
@@ -149,7 +183,7 @@ try:
                           (df_full['Cognome'].astype(str).str.contains(c_input, case=False, na=False))].copy()
             
             if not res.empty:
-                c_data = get_col_name(res.columns, ["DATA"], avoid=["NASCITA"])
+                c_data = get_exact_col(res.columns, "DATA")
                 if c_data:
                     res[c_data] = pd.to_datetime(res[c_data], dayfirst=True, errors='coerce')
                     res = res.sort_values(c_data, ascending=False)
@@ -161,25 +195,18 @@ try:
                 
                 st.dataframe(df_display, use_container_width=True)
 
-                # CORREZIONE 1: Nome file con Data e Nome Atleta
+                # Nome file dinamico
                 data_oggi = datetime.now().strftime("%Y%m%d")
                 nome_atleta_pulito = f"{n_input}_{c_input}".replace(" ", "_")
                 nome_file_pdf = f"Report_{data_oggi}_{nome_atleta_pulito}.pdf"
 
                 pdf_out = generate_pdf(df_view, f"{n_input} {c_input}")
                 if pdf_out:
-                    st.download_button(
-                        label="📥 Scarica Report PDF", 
-                        data=pdf_out, 
-                        file_name=nome_file_pdf, 
-                        mime="application/pdf", 
-                        key="dl_btn", 
-                        use_container_width=True
-                    )
+                    st.download_button("📥 Scarica Report PDF", pdf_out, nome_file_pdf, "application/pdf", use_container_width=True)
             else:
                 st.warning("Nessun atleta trovato.")
 
-    # 3. NUOVA SESSIONE (Logica invariata)
+    # 3. NUOVA SESSIONE
     st.divider()
     st.subheader("📝 Nuova Sessione")
     with st.container(border=True):
@@ -222,12 +249,12 @@ try:
                 st.rerun()
             else: st.error("Compila i campi obbligatori (*)")
 
-    # 4. ARCHIVIO E CANCELLAZIONE (Logica invariata)
+    # 4. ARCHIVIO E CANCELLAZIONE
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
         df_glob = pd.DataFrame(dati_raw)
-        c_data_g = get_col_name(df_glob.columns, ["DATA"], avoid=["NASCITA"])
+        c_data_g = get_exact_col(df_glob.columns, "DATA")
         
         if c_data_g:
             df_glob[c_data_g] = pd.to_datetime(df_glob[c_data_g], dayfirst=True, errors='coerce')
@@ -243,12 +270,9 @@ try:
                     opzioni_cancella = []
                     for _, r in df_recenti.iterrows():
                         label = f"{r[c_data_g].strftime('%d/%m/%Y')} - {r['Nome']} {r['Cognome']}"
-                        opzioni_cancella.append({
-                            "label": label, 
-                            "row_number": r['GOOGLE_SHEET_ROW']
-                        })
+                        opzioni_cancella.append({"label": label, "row_number": r['GOOGLE_SHEET_ROW']})
                     
-                    scelta = st.selectbox("Seleziona la sessione da eliminare:", opzioni_cancella, format_func=lambda x: x["label"], index=None, placeholder="Scegli una sessione...")
+                    scelta = st.selectbox("Seleziona la sessione da eliminare:", opzioni_cancella, format_func=lambda x: x["label"], index=None)
                     
                     if st.button("Elimina Sessione"):
                         if scelta:
@@ -256,10 +280,8 @@ try:
                             sheet = client.open_by_key(ID_FOGLIO).sheet1
                             sheet.delete_rows(scelta['row_number'])
                             st.cache_data.clear()
-                            st.success(f"Sessione eliminata correttamente!")
+                            st.success("Sessione eliminata!")
                             st.rerun()
-                        else:
-                            st.warning("Seleziona prima una riga.")
 
 except Exception as e:
     st.error(f"Errore generale: {e}")
