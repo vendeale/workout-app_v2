@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import pytz  # <--- Libreria per il fuso orario
+import pytz
 from fpdf import FPDF
 import io
 
@@ -27,6 +27,7 @@ def fetch_all_data(id_foglio):
         spreadsheet = client.open_by_key(id_foglio)
         sheet = spreadsheet.sheet1
         data = sheet.get_all_records()
+        # Filtro righe vuote
         return [r for r in data if r.get('Nome') and str(r.get('Nome')).strip() != ""]
     except Exception as e:
         return []
@@ -45,7 +46,7 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].dropna(how='all').copy()
 
-# --- GENERAZIONE PDF CON FUSO ORARIO ROMA ---
+# --- GENERAZIONE PDF ---
 def generate_pdf(df_atleta, nome, cognome):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
@@ -67,28 +68,22 @@ def generate_pdf(df_atleta, nome, cognome):
         kmh_avg = pd.to_numeric(df_atleta[c_kmh], errors='coerce').mean() if c_kmh else 0
         cal_avg = pd.to_numeric(df_atleta[c_cal], errors='coerce').mean() if c_cal else 0
 
-        # Impostazione Fuso Orario Roma
         tz_roma = pytz.timezone('Europe/Rome')
         data_ora_roma = datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M:%S")
 
-        # Header Blu
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 45, 'F')
         pdf.set_font("Arial", 'B', 20)
         pdf.set_text_color(255, 255, 255)
         pdf.set_y(10)
         pdf.cell(0, 10, "AQUATIME PERFORMANCE", 0, 1, 'C')
-        
         pdf.set_font("Arial", 'B', 14)
         pdf.cell(0, 10, f"REPORT ATLETA: {nome.upper()} {cognome.upper()}", 0, 1, 'C')
-        
         pdf.set_font("Arial", 'I', 10)
         pdf.cell(0, 8, f"Generato a Roma il: {data_ora_roma}", 0, 1, 'C')
         
         pdf.set_y(50)
         pdf.set_text_color(0, 0, 0)
-        
-        # Riepilogo Statistico
         pdf.set_font("Arial", 'B', 12)
         pdf.set_fill_color(245, 245, 245)
         pdf.cell(0, 10, "RIEPILOGO GENERALE", 0, 1, 'L')
@@ -98,7 +93,6 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.cell(64, 10, f"Media Calorie: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
-        # Tabella
         pdf.set_font("Arial", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -130,7 +124,7 @@ try:
     st.markdown("<h2 style='text-align: center; color: #00509e;'>AQUATIME PERFORMANCE</h2>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
 
-    # --- 1. RICERCA E REPORT ---
+    # --- 1. RICERCA ---
     st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=False):
         c1, c2 = st.columns(2)
@@ -140,17 +134,15 @@ try:
         if (s_nome or s_cognome) and dati_raw:
             df_tot = pd.DataFrame(dati_raw)
             df_tot.columns = [str(c).strip() for c in df_tot.columns]
-            
             mask = (df_tot['Nome'].astype(str).str.contains(s_nome, case=False, na=False)) & \
                    (df_tot['Cognome'].astype(str).str.contains(s_cognome, case=False, na=False))
             
             risultati = df_tot[mask].copy()
-            
             if not risultati.empty:
                 nome_reale = risultati.iloc[0]['Nome']
                 cognome_reale = risultati.iloc[0]['Cognome']
-                
                 col_data = get_col_name(risultati.columns, ["DATA"], avoid=["NASCITA"])
+                
                 if col_data:
                     risultati[col_data] = pd.to_datetime(risultati[col_data], dayfirst=True, errors='coerce')
                     risultati = risultati.sort_values(col_data)
@@ -160,13 +152,10 @@ try:
                     df_display[col_data] = df_display[col_data].dt.strftime('%d/%m/%Y')
                 
                 st.dataframe(df_display.iloc[::-1], use_container_width=True)
-                
                 pdf_file = generate_pdf(df_display, nome_reale, cognome_reale)
                 if pdf_file:
-                    nome_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
-                    st.download_button("📥 Scarica Report PDF (Orario Roma)", pdf_file, nome_file, "application/pdf")
-            else:
-                st.warning("Atleta non trovato.")
+                    n_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
+                    st.download_button("📥 Scarica Report PDF", pdf_file, n_file, "application/pdf")
 
     # --- 2. FORM INSERIMENTO ---
     st.divider()
@@ -177,14 +166,12 @@ try:
             n_ins = f1.text_input("Nome *")
             c_ins = f2.text_input("Cognome *")
             s_ins = f3.selectbox("Sede *", ["", "Prati", "Corso Trieste"])
-            
             st.divider()
             f4, f5, f6, f7 = st.columns(4)
             d_ins = f4.date_input("Data *")
             sess_sel = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."])
             prog_sel = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"])
             liv_sel = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"])
-
             st.divider()
             f8, f9, f10 = st.columns(3)
             v_ins = f8.number_input("Km/h *", min_value=0.0, step=0.1)
@@ -198,10 +185,10 @@ try:
                     riga = [f"{n_ins} {c_ins}", n_ins, c_ins, 0, "", d_ins.strftime("%d/%m/%Y"), sess_sel, prog_sel, liv_sel, v_ins, k_ins, cl_ins, s_ins, 0, 0, 0]
                     sheet.append_row(riga)
                     st.cache_data.clear()
-                    st.success("Dati salvati correttamente!")
+                    st.success("Dati salvati!")
                     st.rerun()
 
-    # --- 3. GESTIONE ARCHIVIO ---
+    # --- 3. ARCHIVIO E CANCELLAZIONE ---
     st.divider()
     st.subheader("📊 Gestione Archivio")
     if dati_raw:
@@ -209,11 +196,21 @@ try:
         st.dataframe(df_glob.tail(15).iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ Cancella riga"):
-            opzioni = [{"label": f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')}", "idx": i+2} for i, r in enumerate(dati_raw)]
-            sel = st.selectbox("Seleziona:", opzioni[::-1], format_func=lambda x: x["label"])
-            if st.button("Elimina definitivamente"):
+            # Individuiamo la colonna della data per la label
+            col_data_label = get_col_name(df_glob.columns, ["DATA"], avoid=["NASCITA"])
+            
+            opzioni = []
+            for i, r in enumerate(dati_raw):
+                # Creiamo una label parlante: Riga, Nome, Cognome e Data
+                data_str = r.get(col_data_label, "N/D")
+                label = f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')} - Data: {data_str}"
+                opzioni.append({"label": label, "idx": i+2})
+            
+            sel = st.selectbox("Seleziona la sessione da eliminare:", opzioni[::-1], format_func=lambda x: x["label"])
+            if st.button("Conferma Eliminazione Permanente"):
                 get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
                 st.cache_data.clear()
+                st.success("Riga eliminata!")
                 st.rerun()
 
 except Exception as e:
