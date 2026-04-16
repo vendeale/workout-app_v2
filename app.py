@@ -154,7 +154,7 @@ try:
                 if pdf_bytes:
                     st.download_button("📥 Scarica Report PDF", pdf_bytes, f"Report_{n_input}.pdf", "application/pdf", use_container_width=True)
 
-    # 3. FORM INSERIMENTO (MODIFICATO: DATA E CAMPI VUOTI)
+    # 3. FORM INSERIMENTO CON OPZIONE "ALTRO"
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -165,11 +165,19 @@ try:
             sede = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Seleziona sede...")
             
             f4, f5, f6, f7 = st.columns(4)
-            # Campo data impostato su None per forzare la scelta
             data_s = f4.date_input("Data *", value=None, format="DD/MM/YYYY")
-            durata = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli durata...")
-            prog = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"], index=None, placeholder="Scegli programma...")
-            liv = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"], index=None, placeholder="Scegli livello...")
+            
+            # SESSIONE
+            durata_sel = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
+            durata_altro = f5.text_input("Specifica Sessione", placeholder="es. 60 min") if durata_sel == "Altro..." else ""
+            
+            # PROGRAMMA
+            prog_sel = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."], index=None, placeholder="Scegli...")
+            prog_altro = f6.text_input("Specifica Programma") if prog_sel == "Altro..." else ""
+            
+            # LIVELLO
+            liv_sel = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var", "Altro..."], index=None, placeholder="Scegli...")
+            liv_altro = f7.text_input("Specifica Livello") if liv_sel == "Altro..." else ""
             
             f8, f9, f10 = st.columns(3)
             vel = f8.number_input("Km/h *", min_value=0.0, step=0.1, value=0.0)
@@ -177,17 +185,21 @@ try:
             cal = f10.number_input("Calorie *", min_value=0, value=0)
 
             if st.form_submit_button("Salva sessione"):
-                # Controllo rigoroso su tutti i campi, inclusa la data
-                if nome and cognome and sede and data_s and durata and prog and liv:
+                # Gestione valori "Altro"
+                final_durata = durata_altro if durata_sel == "Altro..." else durata_sel
+                final_prog = prog_altro if prog_sel == "Altro..." else prog_sel
+                final_liv = liv_altro if liv_sel == "Altro..." else liv_sel
+
+                if nome and cognome and sede and data_s and final_durata and final_prog and final_liv:
                     client = get_gspread_client()
                     sheet = client.open_by_key(ID_FOGLIO).sheet1
-                    riga = [f"{nome} {cognome}", nome, cognome, 0, "", data_s.strftime("%d/%m/%Y"), durata, prog, liv, vel, dist, cal, sede, 0, 0, 0]
+                    riga = [f"{nome} {cognome}", nome, cognome, 0, "", data_s.strftime("%d/%m/%Y"), final_durata, final_prog, final_liv, vel, dist, cal, sede, 0, 0, 0]
                     sheet.append_row(riga)
                     st.cache_data.clear()
                     st.success("Dati inviati correttamente!")
                     st.rerun()
                 else:
-                    st.error("Errore: Compila tutti i campi obbligatori (*) e assicurati di aver selezionato la Data.")
+                    st.error("Errore: Compila tutti i campi obbligatori. Se hai selezionato 'Altro...', scrivi il valore nella casella che è apparsa.")
 
     # 4. STORICO 30 GIORNI E CANCELLAZIONE
     st.divider()
