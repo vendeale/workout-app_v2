@@ -26,11 +26,13 @@ def fetch_all_data(id_foglio):
         client = get_gspread_client()
         spreadsheet = client.open_by_key(id_foglio)
         sheet = spreadsheet.sheet1
+        # Leggiamo tutto includendo i numeri di riga
         data = sheet.get_all_records()
         cleaned_data = []
-        for r in data:
-            # Pulizia chiavi e valori per evitare errori di spazi bianchi
+        for i, r in enumerate(data):
             new_r = {str(k).strip(): v for k, v in r.items()}
+            # Aggiungiamo l'indice reale del foglio Google (header=1 + index=0-based + 2)
+            new_r['GOOGLE_SHEET_ROW'] = i + 2
             if new_r.get('Nome') and str(new_r.get('Nome')).strip() != "":
                 cleaned_data.append(new_r)
         return cleaned_data
@@ -45,7 +47,8 @@ def force_numeric(val):
         return 0.0
 
 def filtra_privacy(df):
-    cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
+    # Rimuoviamo anche la colonna tecnica del numero riga dalla visualizzazione
+    cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE) and c != 'GOOGLE_SHEET_ROW']
     return df[cols_to_keep].dropna(how='all').copy()
 
 def get_col_name(columns, keywords, avoid=None):
@@ -202,7 +205,7 @@ try:
                 st.rerun()
             else: st.error("Compila i campi obbligatori (*)")
 
-    # 4. ARCHIVIO E CANCELLAZIONE (LOGICA MIGLIORATA)
+    # 4. ARCHIVIO E CANCELLAZIONE (LOGICA INFALLIBILE)
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
@@ -221,13 +224,11 @@ try:
 
                 with st.expander("🗑️ Cancella una riga dall'archivio"):
                     opzioni_cancella = []
-                    for idx, r in df_recenti.iterrows():
+                    for _, r in df_recenti.iterrows():
                         label = f"{r[c_data_g].strftime('%d/%m/%Y')} - {r['Nome']} {r['Cognome']}"
                         opzioni_cancella.append({
                             "label": label, 
-                            "nome": str(r['Nome']).strip(), 
-                            "cognome": str(r['Cognome']).strip(), 
-                            "data": r[c_data_g].strftime('%d/%m/%Y')
+                            "row_number": r['GOOGLE_SHEET_ROW']
                         })
                     
                     scelta = st.selectbox("Seleziona la sessione da eliminare:", opzioni_cancella, format_func=lambda x: x["label"], index=None, placeholder="Scegli una sessione...")
@@ -236,31 +237,11 @@ try:
                         if scelta:
                             client = get_gspread_client()
                             sheet = client.open_by_key(ID_FOGLIO).sheet1
-                            
-                            # Fetching di nuovo i dati freschi per trovare la riga corretta
-                            records = sheet.get_all_records()
-                            row_to_del = -1
-                            
-                            for i, row in enumerate(records):
-                                # Pulizia nomi colonne del foglio per il confronto
-                                clean_row = {str(k).strip().upper(): str(v).strip() for k, v in row.items()}
-                                
-                                # Trova il nome della colonna data nel foglio corrente
-                                sheet_data_col = next((k for k in clean_row.keys() if "DATA" in k and "NASCITA" not in k), None)
-                                
-                                if (clean_row.get('NOME') == scelta['nome'].upper() and 
-                                    clean_row.get('COGNOME') == scelta['cognome'].upper() and 
-                                    (sheet_data_col and clean_row.get(sheet_data_col) == scelta['data'])):
-                                    row_to_del = i + 2 # +2 per header e index 1-based
-                                    break
-                            
-                            if row_to_del != -1:
-                                sheet.delete_rows(row_to_del)
-                                st.cache_data.clear()
-                                st.success(f"Sessione eliminata!")
-                                st.rerun()
-                            else:
-                                st.error("Impossibile trovare la riga corrispondente nel foglio. Verifica che i nomi delle colonne 'Nome', 'Cognome' e 'DATA' siano corretti.")
+                            # Eliminiamo direttamente usando il numero riga salvato
+                            sheet.delete_rows(scelta['row_number'])
+                            st.cache_data.clear()
+                            st.success(f"Sessione eliminata correttamente dal foglio!")
+                            st.rerun()
                         else:
                             st.warning("Seleziona prima una riga.")
 
