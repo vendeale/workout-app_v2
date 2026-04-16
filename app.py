@@ -151,7 +151,6 @@ try:
                 
                 st.dataframe(df_display_search, use_container_width=True)
 
-                # Generazione PDF e Pulsante Download
                 pdf_bytes = generate_pdf(df_view, f"{n_input} {c_input}")
                 if pdf_bytes:
                     st.download_button(
@@ -165,7 +164,7 @@ try:
             else:
                 st.warning("Nessun risultato trovato.")
 
-    # 3. SEZIONE NUOVA SESSIONE (Logica Dinamica Fuori dal Form)
+    # 3. SEZIONE NUOVA SESSIONE
     st.divider()
     st.subheader("📝 Nuova Sessione")
     with st.container(border=True):
@@ -178,7 +177,6 @@ try:
         c_data, c_sess, c_prog, c_liv = st.columns(4)
         data_s = c_data.date_input("Data *", value=None, format="DD/MM/YYYY")
         
-        # BOX DINAMICI
         durata_sel = c_sess.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
         final_durata = durata_sel
         if durata_sel == "Altro...":
@@ -189,7 +187,14 @@ try:
         if prog_sel == "Altro...":
             final_prog = c_prog.text_input("Specifica Programma", key="alt_pro")
             
-        liv_sel = c_liv.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var", "Altro..."], index=None, placeholder="Scegli...")
+        # MODIFICA OPZIONI LIVELLO RICHIESTE
+        opzioni_livello = [
+            "1-resistenza", "2-resistenza", "3-resistenza", 
+            "1-variabile", "2-variabile", "3-variabile", 
+            "4-variabile", "5-variabile", "6-variabile", 
+            "Altro..."
+        ]
+        liv_sel = c_liv.selectbox("Livello *", opzioni_livello, index=None, placeholder="Scegli...")
         final_liv = liv_sel
         if liv_sel == "Altro...":
             final_liv = c_liv.text_input("Specifica Livello", key="alt_liv")
@@ -200,7 +205,6 @@ try:
         dist_ins = f9.number_input("Km *", min_value=0.0, step=0.1, value=0.0)
         cal_ins = f10.number_input("Calorie *", min_value=0, value=0)
 
-        # Pulsante Salva centrato, piccolo e non rosso
         st.write("")
         _, col_btn, _ = st.columns([2, 1, 2])
         if col_btn.button("Salva Sessione", use_container_width=True):
@@ -239,13 +243,13 @@ try:
                 st.dataframe(df_display_arc, use_container_width=True)
 
                 with st.expander("🗑️ Cancella una riga dall'archivio"):
-                    opzioni = []
+                    opzioni_del = []
                     for idx, r in df_rec_view.iterrows():
                         d_str = r[c_data_g].strftime('%d/%m/%Y')
                         label = f"{d_str} - {r.get('Nome','')} {r.get('Cognome','')}"
-                        opzioni.append({"label": label, "index": idx+2})
+                        opzioni_del.append({"label": label, "index": idx+2})
                     
-                    sk = st.selectbox("Seleziona riga da eliminare:", opzioni, format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
+                    sk = st.selectbox("Seleziona riga da eliminare:", opzioni_del, format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
                     if st.button("Conferma Eliminazione"):
                         if sk:
                             client = get_gspread_client()
