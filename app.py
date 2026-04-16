@@ -13,18 +13,6 @@ st.set_page_config(page_title="Aquatime Workout Manager", page_icon="🚴‍♂�
 # --- COSTANTI PRIVACY ---
 COLONNE_NASCOSTE = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
 
-# --- FUNZIONE PER RESETTARE IL FORM ---
-def reset_form_fields():
-    """Rimuove le chiavi dal session_state per svuotare i widget"""
-    keys_to_reset = [
-        "ins_n", "ins_c", "ins_sede", "ins_data", 
-        "ins_dur", "ins_dur_alt", "ins_prog", "ins_prog_alt", 
-        "ins_liv", "ins_liv_alt", "ins_vel", "ins_dist", "ins_cal"
-    ]
-    for key in keys_to_reset:
-        if key in st.session_state:
-            del st.session_state[key]
-
 # --- FUNZIONI DI ACCESSO AI DATI ---
 @st.cache_resource
 def get_gspread_client():
@@ -179,11 +167,14 @@ try:
             else:
                 st.warning("Nessun atleta trovato.")
 
-    # 3. NUOVA SESSIONE (Con reset logica)
+    # 3. NUOVA SESSIONE (VERSIONE RESET STABILE)
     st.divider()
     st.subheader("📝 Nuova Sessione")
+    
+    # Per resettare, usiamo un contenitore vuoto che Streamlit rigenera
     with st.container(border=True):
         f1, f2, f3 = st.columns(3)
+        # Assegniamo chiavi univoche e gestiamo il reset via session_state
         nome_ins = f1.text_input("Nome *", key="ins_n")
         cognome_ins = f2.text_input("Cognome *", key="ins_c")
         sede_ins = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Scegli sede...", key="ins_sede")
@@ -192,17 +183,17 @@ try:
         c1, c2, c3, c4 = st.columns(4)
         data_s = c1.date_input("Data *", value=None, format="DD/MM/YYYY", key="ins_data")
         
-        dur_sel = c2.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...", key="ins_dur")
+        dur_sel = c2.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, key="ins_dur")
         f_durata = dur_sel
         if dur_sel == "Altro...": 
             f_durata = c2.text_input("Specifica Sessione", key="ins_dur_alt")
             
-        prg_sel = c3.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."], index=None, placeholder="Scegli...", key="ins_prog")
+        prg_sel = c3.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."], index=None, key="ins_prog")
         f_prog = prg_sel
         if prg_sel == "Altro...": 
             f_prog = c3.text_input("Specifica Programma", key="ins_prog_alt")
             
-        liv_sel = c4.selectbox("Livello *", ["1-resistenza", "2-resistenza", "3-resistenza", "1-variabile", "2-variabile", "3-variabile", "4-variabile", "5-variabile", "6-variabile", "Altro..."], index=None, placeholder="Scegli...", key="ins_liv")
+        liv_sel = c4.selectbox("Livello *", ["1-resistenza", "2-resistenza", "3-resistenza", "1-variabile", "2-variabile", "3-variabile", "4-variabile", "5-variabile", "6-variabile", "Altro..."], index=None, key="ins_liv")
         f_liv = liv_sel
         if liv_sel == "Altro...": 
             f_liv = c4.text_input("Specifica Livello", key="ins_liv_alt")
@@ -216,22 +207,31 @@ try:
         _, col_btn, _ = st.columns([2, 1, 2])
         if col_btn.button("Salva Sessione", use_container_width=True):
             if nome_ins and cognome_ins and sede_ins and data_s and f_durata and f_prog and f_liv:
-                client = get_gspread_client()
-                sheet = client.open_by_key(ID_FOGLIO).sheet1
-                riga = [f"{nome_ins} {cognome_ins}", nome_ins, cognome_ins, 0, "", data_s.strftime("%d/%m/%Y"), f_durata, f_prog, f_liv, vel, dist, cal, sede_ins, 0, 0, 0]
-                sheet.append_row(riga)
-                
-                # SVUOTAMENTO CACHE E RESET FORM
-                st.cache_data.clear()
-                reset_form_fields()
-                
-                # Messaggio di successo e rerun per applicare lo svuotamento
-                st.success("Salvato correttamente!")
-                st.rerun()
+                try:
+                    client = get_gspread_client()
+                    sheet = client.open_by_key(ID_FOGLIO).sheet1
+                    riga = [f"{nome_ins} {cognome_ins}", nome_ins, cognome_ins, 0, "", data_s.strftime("%d/%m/%Y"), f_durata, f_prog, f_liv, vel, dist, cal, sede_ins, 0, 0, 0]
+                    sheet.append_row(riga)
+                    
+                    # --- LOGICA DI RESET AGGRESSIVA ---
+                    st.cache_data.clear()
+                    
+                    # Puliamo forzatamente ogni chiave dello stato
+                    for key in ["ins_n", "ins_c", "ins_sede", "ins_data", "ins_dur", "ins_dur_alt", 
+                                "ins_prog", "ins_prog_alt", "ins_liv", "ins_liv_alt", "ins_vel", "ins_dist", "ins_cal"]:
+                        if key in st.session_state:
+                            st.session_state[key] = None if "data" in key or "sede" in key or "dur" in key or "prog" in key or "liv" in key else ""
+                            if "vel" in key or "dist" in key or "cal" in key:
+                                st.session_state[key] = 0.0 if "cal" not in key else 0
+
+                    st.success("Salvato correttamente! Il modulo verrà resettato.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Errore durante il salvataggio: {e}")
             else: 
                 st.error("Compila i campi obbligatori (*)")
 
-    # 4. ARCHIVIO E CANCELLAZIONE (Invariato)
+    # 4. ARCHIVIO E CANCELLAZIONE
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
@@ -257,7 +257,7 @@ try:
                             sheet = client.open_by_key(ID_FOGLIO).sheet1
                             sheet.delete_rows(scelta['row_number'])
                             st.cache_data.clear()
-                            st.success("Sessione eliminata!")
                             st.rerun()
+
 except Exception as e:
     st.error(f"Errore generale: {e}")
