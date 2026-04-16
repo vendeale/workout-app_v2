@@ -31,7 +31,15 @@ def fetch_all_data(id_foglio):
     except Exception as e:
         return []
 
-# --- HELPER ---
+# --- HELPER NUMERICI ---
+def force_numeric(val):
+    if val is None or val == "": return 0.0
+    try:
+        s = str(val).replace(',', '.').strip()
+        return float(s)
+    except:
+        return 0.0
+
 def get_col_name(columns, keywords, avoid=None):
     for col in columns:
         c_up = str(col).upper().strip()
@@ -44,14 +52,6 @@ def get_col_name(columns, keywords, avoid=None):
 def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].dropna(how='all').copy()
-
-def force_numeric(val):
-    if val is None or val == "": return 0.0
-    try:
-        s = str(val).replace(',', '.').strip()
-        return float(s)
-    except:
-        return 0.0
 
 # --- GENERAZIONE PDF ---
 def generate_pdf(df_atleta, nome, cognome):
@@ -67,7 +67,6 @@ def generate_pdf(df_atleta, nome, cognome):
         c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"])
         c_liv = get_col_name(df_atleta.columns, ["LIVELLO"])
 
-        # Calcoli statistici corretti
         km_vals = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
         km_tot = km_vals.sum()
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
@@ -76,17 +75,17 @@ def generate_pdf(df_atleta, nome, cognome):
         tz_roma = pytz.timezone('Europe/Rome')
         data_ora_roma = datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M:%S")
 
-        # Header Blu
+        # Header PDF
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 45, 'F')
-        pdf.set_font("Arial", 'B', 20)
         pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", 'B', 24)
         pdf.set_y(10)
-        pdf.cell(0, 10, "AQUATIME PERFORMANCE", 0, 1, 'C')
+        pdf.cell(0, 12, "AQUATIME PERFORMANCE", 0, 1, 'C')
         pdf.set_font("Arial", 'B', 14)
         pdf.cell(0, 10, f"REPORT PERFORMANCE: {nome.upper()} {cognome.upper()}", 0, 1, 'C')
         pdf.set_font("Arial", 'I', 10)
-        pdf.cell(0, 8, f"Generato a Roma il: {data_ora_roma}", 0, 1, 'C')
+        pdf.cell(0, 8, f"Data report: {data_ora_roma}", 0, 1, 'C')
         
         pdf.set_y(50)
         pdf.set_text_color(0, 0, 0)
@@ -99,7 +98,7 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.cell(64, 10, f"Media Calorie: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
-        # Tabella sessioni
+        # Tabella PDF
         pdf.set_font("Arial", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -128,11 +127,15 @@ try:
     ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4"
     dati_raw = fetch_all_data(ID_FOGLIO)
 
-    st.markdown("<h2 style='text-align: center; color: #00509e;'>AQUATIME PERFORMANCE</h2>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
+    # --- NUOVO LOGO HOMEPAGE (STILE PDF) ---
+    st.markdown("""
+        <div style="background-color: #00509e; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
+            <h1 style="color: white; margin: 0; font-family: Arial; font-size: 36px; letter-spacing: 2px;">AQUATIME</h1>
+            <p style="color: #e0e0e0; margin: 0; font-family: Arial; font-size: 18px; font-weight: bold;">PERFORMANCE WORKOUT MANAGER</p>
+        </div>
+    """, unsafe_allow_html=True)
 
     # --- 1. RICERCA ---
-    st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=False):
         c1, c2 = st.columns(2)
         s_nome = c1.text_input("Nome:", key="sn").strip()
@@ -164,7 +167,7 @@ try:
                     n_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
                     st.download_button("📥 Scarica Report PDF", pdf_file, n_file, "application/pdf")
 
-    # --- 2. FORM INSERIMENTO (NESSUN DEFAULT) ---
+    # --- 2. FORM INSERIMENTO ---
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -209,9 +212,7 @@ try:
         
         if col_data_glob:
             df_glob[col_data_glob] = pd.to_datetime(df_glob[col_data_glob], dayfirst=True, errors='coerce')
-            
             tz_roma = pytz.timezone('Europe/Rome')
-            # Fix: replace(tzinfo=None) per evitare errori di confronto tra datetime aware e naive
             oggi_naive = datetime.now(tz_roma).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
             limite_30gg = oggi_naive - timedelta(days=30)
             
@@ -227,7 +228,6 @@ try:
                 with st.expander("🗑️ Cancella riga"):
                     opzioni = []
                     for idx, r in df_recenti.iterrows():
-                        # idx+2 corrisponde alla riga reale nel foglio Google
                         d_str = r[col_data_glob].strftime('%d/%m/%Y') if pd.notnull(r[col_data_glob]) else "N/D"
                         label = f"Riga {idx+2}: {r.get('Nome','')} {r.get('Cognome','')} - Data: {d_str}"
                         opzioni.append({"label": label, "idx": idx+2})
@@ -238,8 +238,6 @@ try:
                             get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
                             st.cache_data.clear()
                             st.rerun()
-            else:
-                st.info(f"Nessun dato negli ultimi 30 giorni.")
 
 except Exception as e:
     st.error(f"Errore tecnico: {e}")
