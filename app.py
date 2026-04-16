@@ -36,7 +36,6 @@ def fetch_all_data(id_foglio):
 def force_numeric(val):
     if val is None or val == "": return 0.0
     try:
-        # Gestisce sia il punto che la virgola come separatori decimali
         s = str(val).replace(',', '.').strip()
         return float(s)
     except:
@@ -55,29 +54,32 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].dropna(how='all').copy()
 
-# --- GENERAZIONE PDF AGGIORNATA ---
+# --- GENERAZIONE PDF (CORREZIONE MAPPATURA COLONNE) ---
 def generate_pdf(df_atleta, nome, cognome):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         
-        # Identificazione colonne
-        c_data = get_col_name(df_atleta.columns, ["DATA"], avoid=["NASCITA"])
-        c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI", "KM"])
-        c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA"])
-        c_cal = get_col_name(df_atleta.columns, ["CALORIE", "KCAL"])
-        c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"])
-        c_liv = get_col_name(df_atleta.columns, ["LIVELLO"])
+        # 1. Identificazione univoca delle colonne
+        all_cols = df_atleta.columns.tolist()
+        c_data = get_col_name(all_cols, ["DATA"], avoid=["NASCITA"])
+        c_km = get_col_name(all_cols, ["KM TOTALI", "KM PERCORSI"]) # Cerca prima la colonna specifica dei KM
+        if not c_km: c_km = "KM" # Fallback se non trovata con keywords lunghe
+        
+        c_kmh = get_col_name(all_cols, ["KM/H", "VELOCITA"])
+        c_cal = get_col_name(all_cols, ["CALORIE", "KCAL"])
+        c_prog = get_col_name(all_cols, ["PROGRAMMA"])
+        c_liv = get_col_name(all_cols, ["LIVELLO"])
 
-        # CALCOLI DISTINTI: Somma per i Km, Media per Km/h
-        valori_km = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
-        valori_kmh = df_atleta[c_kmh].apply(force_numeric) if c_kmh else pd.Series([0.0])
-        valori_cal = df_atleta[c_cal].apply(force_numeric) if c_cal else pd.Series([0.0])
+        # 2. Estrazione valori per statistiche
+        valori_km = df_atleta[c_km].apply(force_numeric)
+        valori_kmh = df_atleta[c_kmh].apply(force_numeric)
+        valori_cal = df_atleta[c_cal].apply(force_numeric)
 
-        km_tot_somma = valori_km.sum() # SOMMA
-        kmh_media = valori_kmh.mean()   # MEDIA
-        cal_media = valori_cal.mean()   # MEDIA
+        km_tot_somma = valori_km.sum()
+        kmh_media = valori_kmh.mean()
+        cal_media = valori_cal.mean()
 
         tz_roma = pytz.timezone('Europe/Rome')
         data_ora_roma = datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M:%S")
@@ -94,6 +96,7 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.set_font("Arial", 'I', 10)
         pdf.cell(0, 8, f"Data report: {data_ora_roma}", 0, 1, 'C')
         
+        # Riepilogo Statistico
         pdf.set_y(50)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", 'B', 12)
@@ -101,13 +104,12 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.cell(0, 10, "RIEPILOGO PERFORMANCE", 0, 1, 'L')
         
         pdf.set_font("Arial", '', 10)
-        # Visualizzazione chiara dei risultati calcolati
-        pdf.cell(63, 10, f"Km Totali (Somma): {km_tot_somma:.2f}", 1, 0, 'C', True)
+        pdf.cell(63, 10, f"Km Totali: {km_tot_somma:.2f}", 1, 0, 'C', True)
         pdf.cell(63, 10, f"Km/h (Media): {kmh_media:.1f}", 1, 0, 'C', True)
         pdf.cell(64, 10, f"Kcal (Media): {cal_media:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
-        # Tabella sessioni
+        # Intestazione Tabella
         pdf.set_font("Arial", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -117,15 +119,22 @@ def generate_pdf(df_atleta, nome, cognome):
             pdf.cell(w[i], 8, headers[i], 1, 0, 'C', True)
         pdf.ln()
 
+        # Ciclo righe (Dati distinti)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", '', 8)
         for _, row in df_atleta.iterrows():
             pdf.cell(w[0], 7, str(row.get(c_data, '')), 1, 0, 'C')
             pdf.cell(w[1], 7, str(row.get(c_prog, ''))[:22], 1, 0, 'L')
             pdf.cell(w[2], 7, str(row.get(c_liv, ''))[:20], 1, 0, 'L')
-            pdf.cell(w[3], 7, str(row.get(c_km, '0')), 1, 0, 'C')
-            pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C')
-            pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C')
+            
+            # ATTENZIONE QUI: Estrazione esplicita per evitare duplicazioni
+            val_distanza = str(row.get(c_km, '0'))
+            val_velocita = str(row.get(c_kmh, '0'))
+            val_calorie = str(row.get(c_cal, '0'))
+            
+            pdf.cell(w[3], 7, val_distanza, 1, 0, 'C')
+            pdf.cell(w[4], 7, val_velocita, 1, 0, 'C')
+            pdf.cell(w[5], 7, val_calorie, 1, 1, 'C')
 
         return bytes(pdf.output())
     except Exception as e:
@@ -136,7 +145,7 @@ try:
     ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4"
     dati_raw = fetch_all_data(ID_FOGLIO)
 
-    # --- LOGO HOMEPAGE CENTRATO ---
+    # Logo Centrato
     col_left, col_center, col_right = st.columns([1, 2, 1])
     with col_center:
         if os.path.exists("logo.png"):
@@ -144,7 +153,7 @@ try:
         else:
             st.title("AQUATIME PERFORMANCE")
 
-    # --- 1. RICERCA ---
+    # Ricerca e PDF
     st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=False):
         c1, c2 = st.columns(2)
@@ -168,16 +177,19 @@ try:
                     risultati = risultati.sort_values(col_data)
                 
                 df_display = filtra_privacy(risultati)
+                # Creiamo il PDF prima di formattare le date per la visualizzazione a schermo
+                pdf_file = generate_pdf(df_display, nome_reale, cognome_reale)
+                
                 if col_data and col_data in df_display.columns:
                     df_display[col_data] = df_display[col_data].dt.strftime('%d/%m/%Y')
                 
                 st.dataframe(df_display.iloc[::-1], use_container_width=True)
-                pdf_file = generate_pdf(df_display, nome_reale, cognome_reale)
+                
                 if pdf_file:
                     n_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
                     st.download_button("📥 Scarica Report PDF", pdf_file, n_file, "application/pdf")
 
-    # --- 2. FORM INSERIMENTO ---
+    # Form Inserimento
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -212,7 +224,7 @@ try:
                 else:
                     st.error("Compila tutti i campi obbligatori!")
 
-    # --- 3. ARCHIVIO (ULTIMI 30 GIORNI) ---
+    # Archivio 30 Giorni
     st.divider()
     st.subheader("📊 Gestione Archivio (Ultimi 30 giorni)")
     if dati_raw:
@@ -248,8 +260,6 @@ try:
                             get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
                             st.cache_data.clear()
                             st.rerun()
-            else:
-                st.info(f"Nessun dato negli ultimi 30 giorni.")
 
 except Exception as e:
     st.error(f"Errore tecnico: {e}")
