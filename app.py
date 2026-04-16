@@ -24,11 +24,10 @@ def fetch_all_data(id_foglio):
     sheet = spreadsheet.sheet1
     return sheet.get_all_records()
 
-# --- HELPER: IDENTIFICAZIONE COLONNE INTELLIGENTE ---
+# --- HELPER: IDENTIFICAZIONE COLONNE DINAMICA ---
 def get_col_name(columns, keywords, avoid=None):
-    """Trova il nome colonna basandosi su keyword, evitando termini vietati."""
     for col in columns:
-        c_up = str(col).upper()
+        c_up = str(col).upper().strip()
         if any(key.upper() in c_up for key in keywords):
             if avoid and any(a.upper() in c_up for a in avoid):
                 continue
@@ -40,13 +39,13 @@ def generate_pdf(df_atleta, nome, cognome):
     pdf = FPDF()
     pdf.add_page()
     
-    # Identificazione colonne per il PDF (evitando Data di Nascita)
+    # Identificazione dinamica delle colonne presenti nel DataFrame
     c_data = get_col_name(df_atleta.columns, ["DATA"], avoid=["NASCITA"])
-    c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI"]) or "Km totali"
-    c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA"]) or "Km/h"
-    c_cal = get_col_name(df_atleta.columns, ["CALORIE", "KCAL"]) or "Calorie"
-    c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"]) or "Programma"
-    c_liv = get_col_name(df_atleta.columns, ["LIVELLO"]) or "Livello"
+    c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI", "DISTANZA"])
+    c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA", "VELOCITÀ"])
+    c_cal = get_col_name(df_atleta.columns, ["CALORIE", "KCAL"])
+    c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"])
+    c_liv = get_col_name(df_atleta.columns, ["LIVELLO"])
 
     # Intestazione Aquatime
     pdf.set_font("Arial", 'B', 15)
@@ -83,28 +82,38 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.cell(25, 7, str(row.get(c_cal, '0')), 1)
         pdf.ln(0)
 
-    # Dati numerici per i grafici
+    # Preparazione dati per i grafici
     df_plot = df_atleta.copy()
     for c in [c_km, c_kmh, c_cal]:
-        df_plot[c] = pd.to_numeric(df_plot[c], errors='coerce').fillna(0)
+        if c:
+            df_plot[c] = pd.to_numeric(df_plot[c], errors='coerce').fillna(0)
 
     fig, axs = plt.subplots(2, 2, figsize=(10, 8))
     plt.subplots_adjust(hspace=0.4, wspace=0.3)
 
-    # Grafici
-    axs[0, 0].plot(df_plot[c_data], df_plot[c_km], color='#00509E', marker='o')
-    axs[0, 0].set_title('Km per Sessione', fontsize=10, fontweight='bold')
-    axs[0, 0].tick_params(axis='x', rotation=45, labelsize=7)
+    # Grafico Km (se colonna esiste)
+    if c_km:
+        axs[0, 0].plot(df_plot[c_data], df_plot[c_km], color='#00509E', marker='o')
+        axs[0, 0].set_title('Km per Sessione', fontsize=10, fontweight='bold')
+        axs[0, 0].tick_params(axis='x', rotation=45, labelsize=7)
 
-    axs[0, 1].bar(df_plot[c_data], df_plot[c_kmh], color='#FF8C00')
-    axs[0, 1].set_title('Velocità Media (Km/h)', fontsize=10, fontweight='bold')
-    axs[0, 1].tick_params(axis='x', rotation=45, labelsize=7)
+    # Grafico Km/h (se colonna esiste)
+    if c_kmh:
+        axs[0, 1].bar(df_plot[c_data], df_plot[c_kmh], color='#FF8C00')
+        axs[0, 1].set_title('Velocità Media (Km/h)', fontsize=10, fontweight='bold')
+        axs[0, 1].tick_params(axis='x', rotation=45, labelsize=7)
 
-    axs[1, 0].fill_between(range(len(df_plot)), df_plot[c_cal], color='#2ECC71', alpha=0.3)
-    axs[1, 0].set_title('Andamento Calorie', fontsize=10, fontweight='bold')
+    # Grafico Calorie
+    if c_cal:
+        axs[1, 0].fill_between(range(len(df_plot)), df_plot[c_cal], color='#2ECC71', alpha=0.3)
+        axs[1, 0].set_title('Andamento Calorie', fontsize=10, fontweight='bold')
 
+    # Statistiche
     axs[1, 1].axis('off')
-    txt = f"MEDIA PERFORMANCE\n\nKm Totali: {df_plot[c_km].sum():.1f}\nMedia Km/h: {df_plot[c_kmh].mean():.1f}\nMedia Calorie: {df_plot[c_cal].mean():.0f}"
+    km_tot = df_plot[c_km].sum() if c_km else 0
+    kmh_med = df_plot[c_kmh].mean() if c_kmh else 0
+    cal_med = df_plot[c_cal].mean() if c_cal else 0
+    txt = f"MEDIA PERFORMANCE\n\nKm Totali: {km_tot:.1f}\nMedia Km/h: {kmh_med:.1f}\nMedia Calorie: {cal_med:.0f}"
     axs[1, 1].text(0.1, 0.5, txt, fontsize=12, fontweight='bold')
 
     img_buf = io.BytesIO()
@@ -141,14 +150,12 @@ try:
             
             risultati = df_totale[mask].copy()
             if not risultati.empty:
-                # IDENTIFICA LA DATA CORRETTA (escludendo Nascita)
                 col_data_vera = get_col_name(risultati.columns, ["DATA"], avoid=["NASCITA"])
                 
                 if col_data_vera:
                     risultati[col_data_vera] = pd.to_datetime(risultati[col_data_vera], format='%d/%m/%Y', errors='coerce')
                     risultati = risultati.sort_values(col_data_vera)
                 
-                # Definisce cosa mostrare a video (Privacy)
                 parole_no = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
                 col_mostrare = [c for c in risultati.columns if not any(x in c.upper() for x in parole_no)]
                 
@@ -235,4 +242,4 @@ try:
                     st.rerun()
 
 except Exception as e:
-    st.error(f"Errore: {e}")
+    st.error(f"Errore generale: {e}")
