@@ -156,7 +156,7 @@ try:
                     n_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
                     st.download_button("📥 Scarica Report PDF", pdf_file, n_file, "application/pdf")
 
-    # --- 2. FORM INSERIMENTO (AGGIORNATO SENZA DEFAULT) ---
+    # --- 2. FORM INSERIMENTO (FIXED) ---
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -164,14 +164,13 @@ try:
             f1, f2, f3 = st.columns(3)
             n_ins = f1.text_input("Nome *")
             c_ins = f2.text_input("Cognome *")
-            s_ins = st.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Seleziona Sede...")
+            s_ins = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Seleziona Sede...")
             
             st.divider()
             f4, f5, f6, f7 = st.columns(4)
-            # Data senza default (None) e formato GG/MM/AAAA
-            d_ins = f4.date_input("Data *", value=None, format="DD/MM/YYYY", placeholder="Scegli data")
+            # FIX: rimosso placeholder (non supportato) e inserito value=None
+            d_ins = f4.date_input("Data *", value=None, format="DD/MM/YYYY")
             
-            # Selectbox senza default (index=None)
             sess_sel = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
             prog_sel = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"], index=None, placeholder="Scegli...")
             liv_sel = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"], index=None, placeholder="Scegli...")
@@ -182,7 +181,10 @@ try:
             k_ins = f9.number_input("Km totali *", min_value=0.0, step=0.1, value=0.0)
             cl_ins = f10.number_input("Calorie *", min_value=0, value=0)
 
-            if st.form_submit_button("🚀 Salva"):
+            # Il tasto deve stare QUI dentro
+            submit = st.form_submit_button("🚀 Salva Sessione")
+            
+            if submit:
                 if n_ins and c_ins and s_ins and d_ins and sess_sel and prog_sel and liv_sel:
                     client = get_gspread_client()
                     sheet = client.open_by_key(ID_FOGLIO).sheet1
@@ -192,9 +194,9 @@ try:
                     st.success("Dati salvati!")
                     st.rerun()
                 else:
-                    st.error("Compila tutti i campi contrassegnati con *")
+                    st.error("Compila tutti i campi obbligatori!")
 
-    # --- 3. ARCHIVIO E CANCELLAZIONE ---
+    # --- 3. ARCHIVIO ---
     st.divider()
     st.subheader("📊 Gestione Archivio")
     if dati_raw:
@@ -209,14 +211,14 @@ try:
                 label = f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')} - Data: {data_str}"
                 opzioni.append({"label": label, "idx": i+2})
             
-            sel = st.selectbox("Seleziona sessione:", opzioni[::-1], format_func=lambda x: x["label"], index=None, placeholder="Scegli riga...")
-            if st.button("Elimina"):
+            sel = st.selectbox("Seleziona sessione da eliminare:", opzioni[::-1], format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
+            if st.button("Conferma Eliminazione"):
                 if sel:
                     get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.warning("Seleziona una riga prima di eliminare.")
+                    st.warning("Seleziona una riga.")
 
 except Exception as e:
     st.error(f"Errore: {e}")
