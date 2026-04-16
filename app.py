@@ -27,8 +27,7 @@ def fetch_all_data(id_foglio):
         sheet = spreadsheet.sheet1
         data = sheet.get_all_records()
         
-        # --- PULIZIA DEFINITIVA RIGHE VUOTE ---
-        # Teniamo solo le righe dove il campo 'Nome' esiste ed è una stringa non vuota
+        # Pulizia righe vuote
         puliti = []
         for r in data:
             nome_val = r.get('Nome')
@@ -49,11 +48,10 @@ def get_col_name(columns, keywords, avoid=None):
     return None
 
 def filtra_privacy(df):
-    # Rimuove le colonne sensibili e anche eventuali righe residue totalmente nulle
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].dropna(how='all').copy()
 
-# --- GENERAZIONE PDF ---
+# --- GENERAZIONE PDF AGGIORNATA ---
 def generate_pdf(df_atleta, nome, cognome):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
@@ -75,23 +73,30 @@ def generate_pdf(df_atleta, nome, cognome):
         kmh_avg = pd.to_numeric(df_atleta[c_kmh], errors='coerce').mean() if c_kmh else 0
         cal_avg = pd.to_numeric(df_atleta[c_cal], errors='coerce').mean() if c_cal else 0
 
-        # Header
+        # Header Blu
         pdf.set_fill_color(0, 80, 158)
-        pdf.rect(0, 0, 210, 40, 'F')
-        pdf.set_font("Arial", 'B', 22)
+        pdf.rect(0, 0, 210, 45, 'F')
+        pdf.set_font("Arial", 'B', 20)
         pdf.set_text_color(255, 255, 255)
         pdf.set_y(10)
         pdf.cell(0, 10, "AQUATIME PERFORMANCE", 0, 1, 'C')
-        pdf.set_font("Arial", '', 12)
-        pdf.cell(0, 10, f"Report Atleta: {nome.upper()} {cognome.upper()} | {datetime.now().strftime('%d/%m/%Y')}", 0, 1, 'C')
         
-        pdf.set_y(45)
+        # Sottotitolo con Nome e Cognome
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(0, 10, f"REPORT ATLETA: {nome.upper()} {cognome.upper()}", 0, 1, 'C')
+        
+        # Data di produzione
+        pdf.set_font("Arial", 'I', 10)
+        data_prod = datetime.now().strftime("%d/%m/%Y %H:%M")
+        pdf.cell(0, 8, f"Documento generato il: {data_prod}", 0, 1, 'C')
+        
+        pdf.set_y(50)
         pdf.set_text_color(0, 0, 0)
         
-        # Riepilogo
+        # Riepilogo Statistico
         pdf.set_font("Arial", 'B', 12)
         pdf.set_fill_color(245, 245, 245)
-        pdf.cell(0, 10, "STATISTICHE GENERALI", 0, 1, 'L')
+        pdf.cell(0, 10, "RIEPILOGO GENERALE", 0, 1, 'L')
         pdf.set_font("Arial", '', 10)
         pdf.cell(63, 10, f"Km Totali: {km_tot:.1f}", 1, 0, 'C', True)
         pdf.cell(63, 10, f"Media Km/h: {kmh_avg:.1f}", 1, 0, 'C', True)
@@ -130,7 +135,7 @@ try:
     st.markdown("<h2 style='text-align: center; color: #00509e;'>AQUATIME PERFORMANCE</h2>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
 
-    # --- RICERCA ---
+    # --- 1. RICERCA E REPORT ---
     st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=False):
         c1, c2 = st.columns(2)
@@ -139,7 +144,6 @@ try:
         
         if (s_nome or s_cognome) and dati_raw:
             df_tot = pd.DataFrame(dati_raw)
-            # Pulizia nomi colonne
             df_tot.columns = [str(c).strip() for c in df_tot.columns]
             
             mask = (df_tot['Nome'].astype(str).str.contains(s_nome, case=False, na=False)) & \
@@ -148,6 +152,10 @@ try:
             risultati = df_tot[mask].copy()
             
             if not risultati.empty:
+                # Recuperiamo Nome e Cognome precisi dal primo risultato per il PDF
+                nome_reale = risultati.iloc[0]['Nome']
+                cognome_reale = risultati.iloc[0]['Cognome']
+                
                 col_data = get_col_name(risultati.columns, ["DATA"], avoid=["NASCITA"])
                 if col_data:
                     risultati[col_data] = pd.to_datetime(risultati[col_data], dayfirst=True, errors='coerce')
@@ -159,13 +167,14 @@ try:
                 
                 st.dataframe(df_display.iloc[::-1], use_container_width=True)
                 
-                pdf_file = generate_pdf(df_display, s_nome, s_cognome)
+                pdf_file = generate_pdf(df_display, nome_reale, cognome_reale)
                 if pdf_file:
-                    st.download_button("📥 Scarica Report PDF", pdf_file, f"Report_{s_nome}.pdf", "application/pdf")
+                    nome_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
+                    st.download_button("📥 Scarica Report PDF Completo", pdf_file, nome_file, "application/pdf")
             else:
-                st.warning("Nessun atleta trovato.")
+                st.warning("Atleta non trovato.")
 
-    # --- FORM ---
+    # --- 2. FORM INSERIMENTO ---
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -195,24 +204,23 @@ try:
                     riga = [f"{n_ins} {c_ins}", n_ins, c_ins, 0, "", d_ins.strftime("%d/%m/%Y"), sess_sel, prog_sel, liv_sel, v_ins, k_ins, cl_ins, s_ins, 0, 0, 0]
                     sheet.append_row(riga)
                     st.cache_data.clear()
-                    st.success("Dati salvati!")
+                    st.success("Dati salvati con successo!")
                     st.rerun()
 
-    # --- ARCHIVIO ---
+    # --- 3. GESTIONE ARCHIVIO ---
     st.divider()
     st.subheader("📊 Gestione Archivio")
     if dati_raw:
         df_glob = filtra_privacy(pd.DataFrame(dati_raw))
         st.dataframe(df_glob.tail(15).iloc[::-1], use_container_width=True)
 
-        with st.expander("🗑️ Cancella riga"):
-            # Generazione dinamica lista eliminazione basata solo su righe reali
+        with st.expander("🗑️ Cancella riga errata"):
             opzioni = [{"label": f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')}", "idx": i+2} for i, r in enumerate(dati_raw)]
-            sel = st.selectbox("Seleziona:", opzioni[::-1], format_func=lambda x: x["label"])
-            if st.button("Elimina"):
+            sel = st.selectbox("Seleziona riga da eliminare:", opzioni[::-1], format_func=lambda x: x["label"])
+            if st.button("Conferma Eliminazione"):
                 get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
                 st.cache_data.clear()
                 st.rerun()
 
 except Exception as e:
-    st.error(f"Errore generale: {e}")
+    st.error(f"Errore generale nell'applicazione: {e}")
