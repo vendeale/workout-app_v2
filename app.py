@@ -24,12 +24,28 @@ def fetch_all_data(id_foglio):
     sheet = spreadsheet.sheet1
     return sheet.get_all_records()
 
+# --- HELPER: IDENTIFICAZIONE COLONNE ---
+def get_col_name(columns, keywords):
+    """Trova il nome esatto della colonna basandosi su parole chiave."""
+    for col in columns:
+        if any(key.upper() in str(col).upper() for key in keywords):
+            return col
+    return None
+
 # --- FUNZIONE GENERAZIONE PDF ---
 def generate_pdf(df_atleta, nome, cognome):
     pdf = FPDF()
     pdf.add_page()
     
-    # Intestazione Testuale Aquatime
+    # Identifica colonne reali nel DF per evitare KeyError
+    c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI", "DISTANZA"]) or "Km"
+    c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA", "VELOCITÀ"]) or "Km/h"
+    c_cal = get_col_name(df_atleta.columns, ["CALORIE", "CAL", "KCAL"]) or "Calorie"
+    c_data = get_col_name(df_atleta.columns, ["DATA"]) or "Data Pedalata"
+    c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"]) or "Programma"
+    c_liv = get_col_name(df_atleta.columns, ["LIVELLO"]) or "Livello"
+
+    # Intestazione Aquatime
     pdf.set_font("Arial", 'B', 15)
     pdf.set_text_color(0, 80, 158) 
     pdf.cell(0, 10, "AQUATIME PERFORMANCE", 0, 1, 'L')
@@ -43,11 +59,11 @@ def generate_pdf(df_atleta, nome, cognome):
     pdf.ln(10)
 
     # Tabella Sessioni
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(0, 10, "Riepilogo Sessioni:", 0, 1, 'L')
-    pdf.set_font("Arial", '', 9)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 10, "Riepilogo Sessioni Recenti:", 0, 1, 'L')
+    pdf.set_font("Arial", '', 8)
     
-    pdf.set_fill_color(240, 240, 240)
+    pdf.set_fill_color(230, 240, 255)
     pdf.cell(25, 8, "Data", 1, 0, 'C', True)
     pdf.cell(45, 8, "Programma", 1, 0, 'C', True)
     pdf.cell(30, 8, "Livello", 1, 0, 'C', True)
@@ -56,40 +72,49 @@ def generate_pdf(df_atleta, nome, cognome):
     pdf.cell(25, 8, "Calorie", 1, 1, 'C', True)
 
     for _, row in df_atleta.iterrows():
-        pdf.cell(25, 7, str(row['Data Pedalata']), 1)
-        pdf.cell(45, 7, str(row['Programma'])[:25], 1)
-        pdf.cell(30, 7, str(row['Livello']), 1)
-        pdf.cell(20, 7, str(row['Km totali']), 1)
-        pdf.cell(20, 7, str(row['Km/h']), 1)
-        pdf.cell(25, 7, str(row['Calorie']), 1)
+        pdf.cell(25, 7, str(row.get(c_data, '')), 1)
+        pdf.cell(45, 7, str(row.get(c_prog, ''))[:25], 1)
+        pdf.cell(30, 7, str(row.get(c_liv, '')), 1)
+        pdf.cell(20, 7, str(row.get(c_km, '0')), 1)
+        pdf.cell(20, 7, str(row.get(c_kmh, '0')), 1)
+        pdf.cell(25, 7, str(row.get(c_cal, '0')), 1)
         pdf.ln(0)
 
-    # Grafici
-    df_atleta['Km totali'] = pd.to_numeric(df_atleta['Km totali'], errors='coerce')
-    df_atleta['Km/h'] = pd.to_numeric(df_atleta['Km/h'], errors='coerce')
-    df_atleta['Calorie'] = pd.to_numeric(df_atleta['Calorie'], errors='coerce')
+    # Conversione dati per grafici
+    df_atleta[c_km] = pd.to_numeric(df_atleta[c_km], errors='coerce').fillna(0)
+    df_atleta[c_kmh] = pd.to_numeric(df_atleta[c_kmh], errors='coerce').fillna(0)
+    df_atleta[c_cal] = pd.to_numeric(df_atleta[c_cal], errors='coerce').fillna(0)
 
+    # Creazione Grafici
     fig, axs = plt.subplots(2, 2, figsize=(10, 8))
     plt.subplots_adjust(hspace=0.4, wspace=0.3)
 
     # 1. Km
-    axs[0, 0].plot(df_atleta['Data Pedalata'], df_atleta['Km totali'], color='#00509E', marker='o')
-    axs[0, 0].set_title('Andamento Distanza (Km)', fontsize=10, fontweight='bold')
+    axs[0, 0].plot(df_atleta[c_data], df_atleta[c_km], color='#00509E', marker='o', linewidth=2)
+    axs[0, 0].set_title('Distanza per Sessione (Km)', fontsize=10, fontweight='bold')
     axs[0, 0].tick_params(axis='x', rotation=45, labelsize=7)
+    axs[0, 0].grid(True, linestyle='--', alpha=0.6)
 
     # 2. Velocità
-    axs[0, 1].bar(df_atleta['Data Pedalata'], df_atleta['Km/h'], color='#FF8C00')
+    axs[0, 1].bar(df_atleta[c_data], df_atleta[c_kmh], color='#FF8C00')
     axs[0, 1].set_title('Velocità Media (Km/h)', fontsize=10, fontweight='bold')
     axs[0, 1].tick_params(axis='x', rotation=45, labelsize=7)
 
     # 3. Calorie
-    axs[1, 0].fill_between(df_atleta['Data Pedalata'], df_atleta['Calorie'], color='#2ECC71', alpha=0.3)
+    axs[1, 0].fill_between(range(len(df_atleta)), df_atleta[c_cal], color='#2ECC71', alpha=0.3)
+    axs[1, 0].plot(range(len(df_atleta)), df_atleta[c_cal], color='#27AE60', marker='s')
     axs[1, 0].set_title('Consumo Calorico', fontsize=10, fontweight='bold')
-    axs[1, 0].tick_params(axis='x', rotation=45, labelsize=7)
 
-    # 4. Boxplot per distribuzione
-    axs[1, 1].boxplot(df_atleta['Km totali'].dropna())
-    axs[1, 1].set_title('Variabilità Distanza', fontsize=10, fontweight='bold')
+    # 4. Statistiche Medie (Testo nel grafico)
+    axs[1, 1].axis('off')
+    stat_text = (
+        f"STATISTICHE TOTALI\n\n"
+        f"Km Totali: {df_atleta[c_km].sum():.1f}\n"
+        f"Media Km: {df_atleta[c_km].mean():.1f}\n"
+        f"Media Km/h: {df_atleta[c_kmh].mean():.1f}\n"
+        f"Media Calorie: {df_atleta[c_cal].mean():.0f}"
+    )
+    axs[1, 1].text(0.1, 0.5, stat_text, fontsize=12, fontweight='bold', color='#34495E')
 
     img_buf = io.BytesIO()
     plt.savefig(img_buf, format='png', dpi=150, bbox_inches='tight')
@@ -110,8 +135,7 @@ try:
     sheet = spreadsheet.sheet1
     dati_per_ricerca = fetch_all_data(ID_FOGLIO)
 
-    # --- LOGO E TITOLO ---
-    st.markdown("<h2 style='text-align: center; color: #00509e;'>AQUATIME</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #00509e;'>AQUATIME PERFORMANCE</h2>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
 
     # --- RICERCA RAPIDA ---
@@ -131,14 +155,18 @@ try:
             
             risultati = df_totale[mask].copy()
             if not risultati.empty:
-                risultati['Data Pedalata'] = pd.to_datetime(risultati['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
-                risultati = risultati.sort_values('Data Pedalata')
+                # Trova la colonna data corretta
+                col_data_vera = get_col_name(risultati.columns, ["DATA"])
+                if col_data_vera:
+                    risultati[col_data_vera] = pd.to_datetime(risultati[col_data_vera], format='%d/%m/%Y', errors='coerce')
+                    risultati = risultati.sort_values(col_data_vera)
                 
                 parole_no = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
                 col_mostrare = [c for c in risultati.columns if not any(x in c.upper() for x in parole_no)]
                 
                 df_display = risultati[col_mostrare].copy()
-                df_display['Data Pedalata'] = df_display['Data Pedalata'].dt.strftime('%d/%m/%Y')
+                if col_data_vera:
+                    df_display[col_data_vera] = df_display[col_data_vera].dt.strftime('%d/%m/%Y')
                 
                 st.success(f"Trovate {len(risultati)} sessioni")
                 st.dataframe(df_display.iloc[::-1], use_container_width=True)
@@ -208,12 +236,14 @@ try:
         df_g = pd.DataFrame(dati_per_ricerca)
         df_g.columns = [str(c).strip() for c in df_g.columns]
         try:
-            df_g['Data_dt'] = pd.to_datetime(df_g['Data Pedalata'], format='%d/%m/%Y', errors='coerce')
-            df_f = df_g[df_g['Data_dt'] >= (datetime.now() - timedelta(days=30))].copy()
-            mostrare = [c for c in df_f.columns if not any(w in c.upper() for w in ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"])]
-            st.dataframe(df_f[mostrare].iloc[::-1], use_container_width=True)
+            col_data_g = get_col_name(df_g.columns, ["DATA"])
+            if col_data_g:
+                df_g['Data_dt'] = pd.to_datetime(df_g[col_data_g], format='%d/%m/%Y', errors='coerce')
+                df_f = df_g[df_g['Data_dt'] >= (datetime.now() - timedelta(days=30))].copy()
+                mostrare = [c for c in df_f.columns if not any(w in c.upper() for w in ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"])]
+                st.dataframe(df_f[mostrare].iloc[::-1], use_container_width=True)
         except:
-            st.info("Caricamento storico...")
+            st.info("Caricamento...")
 
         with st.expander("🗑️ Cancella inserimento errato"):
             opzioni = [{"label": f"{r.get('Nome','')} {r.get('Cognome','')} - {r.get('Data Pedalata','')}", "idx": i+2} for i, r in enumerate(dati_per_ricerca)]
