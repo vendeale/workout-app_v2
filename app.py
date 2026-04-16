@@ -56,7 +56,7 @@ def get_col_name(columns, keywords, avoid=None):
             return col
     return None
 
-# --- GENERAZIONE PDF (VERSIONE ROBUSTA) ---
+# --- GENERAZIONE PDF ---
 def generate_pdf(df_atleta, nome_atleta):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
@@ -105,14 +105,17 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", '', 8)
         for _, row in df_atleta.iterrows():
-            pdf.cell(w[0], 7, str(row.get(c_data, '')), 1, 0, 'C')
+            # CORREZIONE 2: Pulizia della data per mostrare solo DD/MM/YYYY
+            data_val = str(row.get(c_data, ''))
+            solo_data = data_val.split(' ')[0] if ' ' in data_val else data_val
+            
+            pdf.cell(w[0], 7, solo_data, 1, 0, 'C')
             pdf.cell(w[1], 7, str(row.get(c_prog, ''))[:22], 1, 0, 'L')
             pdf.cell(w[2], 7, str(row.get(c_liv, ''))[:20], 1, 0, 'L')
             pdf.cell(w[3], 7, str(row.get(c_km, '0')), 1, 0, 'C')
             pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C')
             pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C')
 
-        # Conversione sicura in bytes per Streamlit
         pdf_output = pdf.output()
         if isinstance(pdf_output, bytearray):
             return bytes(pdf_output)
@@ -158,13 +161,17 @@ try:
                 
                 st.dataframe(df_display, use_container_width=True)
 
-                # Generazione PDF
+                # CORREZIONE 1: Nome file con Data e Nome Atleta
+                data_oggi = datetime.now().strftime("%Y%m%d")
+                nome_atleta_pulito = f"{n_input}_{c_input}".replace(" ", "_")
+                nome_file_pdf = f"Report_{data_oggi}_{nome_atleta_pulito}.pdf"
+
                 pdf_out = generate_pdf(df_view, f"{n_input} {c_input}")
                 if pdf_out:
                     st.download_button(
                         label="📥 Scarica Report PDF", 
                         data=pdf_out, 
-                        file_name=f"Report_{n_input}.pdf", 
+                        file_name=nome_file_pdf, 
                         mime="application/pdf", 
                         key="dl_btn", 
                         use_container_width=True
@@ -172,7 +179,7 @@ try:
             else:
                 st.warning("Nessun atleta trovato.")
 
-    # 3. NUOVA SESSIONE
+    # 3. NUOVA SESSIONE (Logica invariata)
     st.divider()
     st.subheader("📝 Nuova Sessione")
     with st.container(border=True):
@@ -215,7 +222,7 @@ try:
                 st.rerun()
             else: st.error("Compila i campi obbligatori (*)")
 
-    # 4. ARCHIVIO E CANCELLAZIONE
+    # 4. ARCHIVIO E CANCELLAZIONE (Logica invariata)
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
@@ -249,13 +256,10 @@ try:
                             sheet = client.open_by_key(ID_FOGLIO).sheet1
                             sheet.delete_rows(scelta['row_number'])
                             st.cache_data.clear()
-                            st.success(f"Sessione eliminata correttamente dal foglio!")
+                            st.success(f"Sessione eliminata correttamente!")
                             st.rerun()
                         else:
                             st.warning("Seleziona prima una riga.")
-
-except Exception as e:
-    st.error(f"Errore generale: {e}")
 
 except Exception as e:
     st.error(f"Errore generale: {e}")
