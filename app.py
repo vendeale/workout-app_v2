@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
-from fpdf import FPDF  # fpdf2 si importa comunque come FPDF
+from fpdf import FPDF 
 import io
 import os
 
@@ -50,32 +50,37 @@ def get_col_name(columns, keywords, avoid=None):
             return col
     return None
 
-# --- GENERAZIONE PDF (AGGIORNATA PER FPDF2) ---
+# --- GENERAZIONE PDF (CORRETTA PER ERRORE KM) ---
 def generate_pdf(df_atleta, nome_atleta):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         
-        # Carichiamo i nomi delle colonne
         cols = df_atleta.columns.tolist()
+        
+        # Identificazione colonne con fallback sicuro
         c_data = get_col_name(cols, ["DATA"], avoid=["NASCITA"])
-        c_km = get_col_name(cols, ["KM TOTALI", "KM PERCORSI"]) or "KM"
+        c_km = get_col_name(cols, ["KM", "DISTANZA", "PERCORSO"])
         c_kmh = get_col_name(cols, ["KM/H", "VELOCIT"])
         c_cal = get_col_name(cols, ["CALORIE", "KCAL"])
         c_prog = get_col_name(cols, ["PROGRAMMA"])
         c_liv = get_col_name(cols, ["LIVELLO"])
 
-        # Calcoli statistiche
-        km_tot = df_atleta[c_km].apply(force_numeric).sum()
-        kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean()
-        cal_avg = df_atleta[c_cal].apply(force_numeric).mean()
+        # Calcoli statistiche con gestione errore colonna assente
+        km_vals = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
+        kmh_vals = df_atleta[c_kmh].apply(force_numeric) if c_kmh else pd.Series([0.0])
+        cal_vals = df_atleta[c_cal].apply(force_numeric) if c_cal else pd.Series([0.0])
+
+        km_tot = km_vals.sum()
+        kmh_avg = kmh_vals.mean()
+        cal_avg = cal_vals.mean()
 
         # Header Blu
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 40, 'F')
         pdf.set_text_color(255, 255, 255)
-        pdf.set_font("helvetica", 'B', 20) # fpdf2 usa helvetica come standard
+        pdf.set_font("helvetica", 'B', 20)
         pdf.set_y(12)
         pdf.cell(0, 10, "AQUATIME PERFORMANCE", align='C', new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("helvetica", '', 12)
@@ -111,7 +116,6 @@ def generate_pdf(df_atleta, nome_atleta):
             pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C')
             pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C')
 
-        # Restituiamo i byte del PDF
         return pdf.output()
     except Exception as e:
         st.error(f"Errore generazione PDF: {e}")
@@ -122,7 +126,7 @@ try:
     ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4"
     dati_raw = fetch_all_data(ID_FOGLIO)
 
-    # 1. LOGO CENTRATO
+    # 1. LOGO
     c_l, c_c, c_r = st.columns([1, 2, 1])
     with c_c:
         if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
@@ -155,7 +159,6 @@ try:
                 
                 st.dataframe(df_display_search, use_container_width=True)
 
-                # --- PULSANTE REPORT PDF ---
                 pdf_output = generate_pdf(df_view, f"{n_input} {c_input}")
                 if pdf_output:
                     st.download_button(
@@ -167,7 +170,7 @@ try:
                         use_container_width=True
                     )
             else:
-                st.warning("Nessun risultato trovato per questo nome/cognome.")
+                st.warning("Nessun risultato trovato.")
 
     # 3. SEZIONE NUOVA SESSIONE
     st.divider()
@@ -223,7 +226,7 @@ try:
                     st.success("Sessione Salvata!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Errore durante il salvataggio: {e}")
+                    st.error(f"Errore salvataggio: {e}")
             else:
                 st.error("Compila tutti i campi obbligatori (*)")
 
@@ -246,20 +249,16 @@ try:
                 df_display_arc[c_data_g] = df_display_arc[c_data_g].dt.strftime('%d/%m/%Y')
                 st.dataframe(df_display_arc, use_container_width=True)
 
-                with st.expander("🗑️ Cancella una riga dall'archivio"):
-                    opzioni_del = []
-                    for idx, r in df_rec_view.iterrows():
-                        d_str = r[c_data_g].strftime('%d/%m/%Y')
-                        label = f"{d_str} - {r.get('Nome','')} {r.get('Cognome','')}"
-                        opzioni_del.append({"label": label, "index": idx+2})
-                    
-                    sk = st.selectbox("Seleziona riga da eliminare:", opzioni_del, format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
-                    if st.button("Conferma Eliminazione"):
+                with st.expander("🗑️ Cancella riga"):
+                    op_del = [{"label": f"{r[c_data_g].strftime('%d/%m/%Y')} - {r['Nome']} {r['Cognome']}", "idx": idx+2} 
+                             for idx, r in df_rec_view.iterrows()]
+                    sk = st.selectbox("Seleziona:", op_del, format_func=lambda x: x["label"], index=None)
+                    if st.button("Elimina"):
                         if sk:
                             client = get_gspread_client()
-                            client.open_by_key(ID_FOGLIO).sheet1.delete_rows(sk["index"])
+                            client.open_by_key(ID_FOGLIO).sheet1.delete_rows(sk["idx"])
                             st.cache_data.clear()
                             st.rerun()
 
 except Exception as e:
-    st.error(f"Errore critico: {e}")
+    st.error(f"Errore: {e}")
