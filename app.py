@@ -24,11 +24,14 @@ def fetch_all_data(id_foglio):
     sheet = spreadsheet.sheet1
     return sheet.get_all_records()
 
-# --- HELPER: IDENTIFICAZIONE COLONNE ---
-def get_col_name(columns, keywords):
-    """Trova il nome esatto della colonna basandosi su parole chiave."""
+# --- HELPER: IDENTIFICAZIONE COLONNE INTELLIGENTE ---
+def get_col_name(columns, keywords, avoid=None):
+    """Trova il nome colonna basandosi su keyword, evitando termini vietati."""
     for col in columns:
-        if any(key.upper() in str(col).upper() for key in keywords):
+        c_up = str(col).upper()
+        if any(key.upper() in c_up for key in keywords):
+            if avoid and any(a.upper() in c_up for a in avoid):
+                continue
             return col
     return None
 
@@ -37,11 +40,11 @@ def generate_pdf(df_atleta, nome, cognome):
     pdf = FPDF()
     pdf.add_page()
     
-    # Identifica colonne reali nel DF per evitare KeyError
-    c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI", "DISTANZA"]) or "Km"
-    c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA", "VELOCITÀ"]) or "Km/h"
-    c_cal = get_col_name(df_atleta.columns, ["CALORIE", "CAL", "KCAL"]) or "Calorie"
-    c_data = get_col_name(df_atleta.columns, ["DATA"]) or "Data Pedalata"
+    # Identificazione colonne per il PDF (evitando Data di Nascita)
+    c_data = get_col_name(df_atleta.columns, ["DATA"], avoid=["NASCITA"])
+    c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI"]) or "Km totali"
+    c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA"]) or "Km/h"
+    c_cal = get_col_name(df_atleta.columns, ["CALORIE", "KCAL"]) or "Calorie"
     c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"]) or "Programma"
     c_liv = get_col_name(df_atleta.columns, ["LIVELLO"]) or "Livello"
 
@@ -60,10 +63,10 @@ def generate_pdf(df_atleta, nome, cognome):
 
     # Tabella Sessioni
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(0, 10, "Riepilogo Sessioni Recenti:", 0, 1, 'L')
+    pdf.cell(0, 10, "Riepilogo Sessioni:", 0, 1, 'L')
     pdf.set_font("Arial", '', 8)
-    
     pdf.set_fill_color(230, 240, 255)
+    
     pdf.cell(25, 8, "Data", 1, 0, 'C', True)
     pdf.cell(45, 8, "Programma", 1, 0, 'C', True)
     pdf.cell(30, 8, "Livello", 1, 0, 'C', True)
@@ -80,51 +83,34 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.cell(25, 7, str(row.get(c_cal, '0')), 1)
         pdf.ln(0)
 
-    # Conversione dati per grafici
-    df_atleta[c_km] = pd.to_numeric(df_atleta[c_km], errors='coerce').fillna(0)
-    df_atleta[c_kmh] = pd.to_numeric(df_atleta[c_kmh], errors='coerce').fillna(0)
-    df_atleta[c_cal] = pd.to_numeric(df_atleta[c_cal], errors='coerce').fillna(0)
+    # Dati numerici per i grafici
+    df_plot = df_atleta.copy()
+    for c in [c_km, c_kmh, c_cal]:
+        df_plot[c] = pd.to_numeric(df_plot[c], errors='coerce').fillna(0)
 
-    # Creazione Grafici
     fig, axs = plt.subplots(2, 2, figsize=(10, 8))
     plt.subplots_adjust(hspace=0.4, wspace=0.3)
 
-    # 1. Km
-    axs[0, 0].plot(df_atleta[c_data], df_atleta[c_km], color='#00509E', marker='o', linewidth=2)
-    axs[0, 0].set_title('Distanza per Sessione (Km)', fontsize=10, fontweight='bold')
+    # Grafici
+    axs[0, 0].plot(df_plot[c_data], df_plot[c_km], color='#00509E', marker='o')
+    axs[0, 0].set_title('Km per Sessione', fontsize=10, fontweight='bold')
     axs[0, 0].tick_params(axis='x', rotation=45, labelsize=7)
-    axs[0, 0].grid(True, linestyle='--', alpha=0.6)
 
-    # 2. Velocità
-    axs[0, 1].bar(df_atleta[c_data], df_atleta[c_kmh], color='#FF8C00')
+    axs[0, 1].bar(df_plot[c_data], df_plot[c_kmh], color='#FF8C00')
     axs[0, 1].set_title('Velocità Media (Km/h)', fontsize=10, fontweight='bold')
     axs[0, 1].tick_params(axis='x', rotation=45, labelsize=7)
 
-    # 3. Calorie
-    axs[1, 0].fill_between(range(len(df_atleta)), df_atleta[c_cal], color='#2ECC71', alpha=0.3)
-    axs[1, 0].plot(range(len(df_atleta)), df_atleta[c_cal], color='#27AE60', marker='s')
-    axs[1, 0].set_title('Consumo Calorico', fontsize=10, fontweight='bold')
+    axs[1, 0].fill_between(range(len(df_plot)), df_plot[c_cal], color='#2ECC71', alpha=0.3)
+    axs[1, 0].set_title('Andamento Calorie', fontsize=10, fontweight='bold')
 
-    # 4. Statistiche Medie (Testo nel grafico)
     axs[1, 1].axis('off')
-    stat_text = (
-        f"STATISTICHE TOTALI\n\n"
-        f"Km Totali: {df_atleta[c_km].sum():.1f}\n"
-        f"Media Km: {df_atleta[c_km].mean():.1f}\n"
-        f"Media Km/h: {df_atleta[c_kmh].mean():.1f}\n"
-        f"Media Calorie: {df_atleta[c_cal].mean():.0f}"
-    )
-    axs[1, 1].text(0.1, 0.5, stat_text, fontsize=12, fontweight='bold', color='#34495E')
+    txt = f"MEDIA PERFORMANCE\n\nKm Totali: {df_plot[c_km].sum():.1f}\nMedia Km/h: {df_plot[c_kmh].mean():.1f}\nMedia Calorie: {df_plot[c_cal].mean():.0f}"
+    axs[1, 1].text(0.1, 0.5, txt, fontsize=12, fontweight='bold')
 
     img_buf = io.BytesIO()
     plt.savefig(img_buf, format='png', dpi=150, bbox_inches='tight')
-    img_buf.seek(0)
-    
     pdf.add_page()
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "Analisi Grafica Performance", 0, 1, 'L')
     pdf.image(img_buf, x=10, y=30, w=190)
-    
     plt.close(fig)
     return pdf.output()
 
@@ -155,29 +141,26 @@ try:
             
             risultati = df_totale[mask].copy()
             if not risultati.empty:
-                # Trova la colonna data corretta
-                col_data_vera = get_col_name(risultati.columns, ["DATA"])
+                # IDENTIFICA LA DATA CORRETTA (escludendo Nascita)
+                col_data_vera = get_col_name(risultati.columns, ["DATA"], avoid=["NASCITA"])
+                
                 if col_data_vera:
                     risultati[col_data_vera] = pd.to_datetime(risultati[col_data_vera], format='%d/%m/%Y', errors='coerce')
                     risultati = risultati.sort_values(col_data_vera)
                 
+                # Definisce cosa mostrare a video (Privacy)
                 parole_no = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
                 col_mostrare = [c for c in risultati.columns if not any(x in c.upper() for x in parole_no)]
                 
                 df_display = risultati[col_mostrare].copy()
-                if col_data_vera:
+                if col_data_vera and col_data_vera in df_display.columns:
                     df_display[col_data_vera] = df_display[col_data_vera].dt.strftime('%d/%m/%Y')
                 
                 st.success(f"Trovate {len(risultati)} sessioni")
                 st.dataframe(df_display.iloc[::-1], use_container_width=True)
 
                 pdf_bytes = generate_pdf(df_display, s_nome, s_cognome)
-                st.download_button(
-                    label="📥 Scarica Report Performance PDF",
-                    data=pdf_bytes,
-                    file_name=f"Report_Aquatime_{s_nome}_{s_cognome}.pdf",
-                    mime="application/pdf"
-                )
+                st.download_button(label="📥 Scarica Report PDF", data=pdf_bytes, file_name=f"Report_{s_nome}_{s_cognome}.pdf", mime="application/pdf")
             else:
                 st.warning("Nessun risultato trovato.")
 
@@ -213,20 +196,17 @@ try:
             with col9: k_ins = st.number_input("Km totali *", min_value=0.0, step=0.1)
             with col10: cl_ins = st.number_input("Calorie *", min_value=0)
 
-            submitted = st.form_submit_button("🚀 Salva Sessione")
-
-            if submitted:
+            if st.form_submit_button("🚀 Salva Sessione"):
                 p_final = p_ex if p_sel == "Altro..." else p_sel
                 s_final = s_ex if s_sel == "Altro..." else s_sel
                 lv_final = lv_ex if lv_sel == "Altro..." else lv_sel
-                
                 if not n_ins or not c_ins or not d_ins or not p_final or not s_final or not lv_final or not s_ins:
                     st.error("⚠️ Compila i campi obbligatori!")
                 else:
                     row = [f"{n_ins} {c_ins}", n_ins, c_ins, 0, "", d_ins.strftime("%d/%m/%Y"), s_final, p_final, lv_final, v_ins, k_ins, cl_ins, s_ins, 0, 0, 0]
                     sheet.append_row(row)
-                    st.success("Dati salvati!")
                     st.cache_data.clear()
+                    st.success("Salvato!")
                     st.rerun()
 
     # --- STORICO GLOBALE ---
@@ -236,24 +216,23 @@ try:
         df_g = pd.DataFrame(dati_per_ricerca)
         df_g.columns = [str(c).strip() for c in df_g.columns]
         try:
-            col_data_g = get_col_name(df_g.columns, ["DATA"])
+            col_data_g = get_col_name(df_g.columns, ["DATA"], avoid=["NASCITA"])
             if col_data_g:
                 df_g['Data_dt'] = pd.to_datetime(df_g[col_data_g], format='%d/%m/%Y', errors='coerce')
                 df_f = df_g[df_g['Data_dt'] >= (datetime.now() - timedelta(days=30))].copy()
                 mostrare = [c for c in df_f.columns if not any(w in c.upper() for w in ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"])]
                 st.dataframe(df_f[mostrare].iloc[::-1], use_container_width=True)
         except:
-            st.info("Caricamento...")
+            st.info("Aggiornamento dati...")
 
-        with st.expander("🗑️ Cancella inserimento errato"):
+        with st.expander("🗑️ Cancella inserimento"):
             opzioni = [{"label": f"{r.get('Nome','')} {r.get('Cognome','')} - {r.get('Data Pedalata','')}", "idx": i+2} for i, r in enumerate(dati_per_ricerca)]
             if opzioni:
                 sel = st.selectbox("Seleziona riga:", opzioni[::-1], format_func=lambda x: x["label"])
-                if st.button("Elimina definitivamente"):
+                if st.button("Elimina"):
                     sheet.delete_rows(sel["idx"])
                     st.cache_data.clear()
                     st.rerun()
 
 except Exception as e:
-    st.error("Errore di configurazione.")
-    st.exception(e)
+    st.error(f"Errore: {e}")
