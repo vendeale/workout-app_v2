@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import pytz
 from fpdf import FPDF
 import io
+import os
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Aquatime Workout Manager", page_icon="🚴‍♂️", layout="wide")
@@ -127,15 +128,19 @@ try:
     ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4"
     dati_raw = fetch_all_data(ID_FOGLIO)
 
-    # --- NUOVO LOGO HOMEPAGE (STILE PDF) ---
-    st.markdown("""
-        <div style="background-color: #00509e; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
-            <h1 style="color: white; margin: 0; font-family: Arial; font-size: 36px; letter-spacing: 2px;">AQUATIME</h1>
-            <p style="color: #e0e0e0; margin: 0; font-family: Arial; font-size: 18px; font-weight: bold;">PERFORMANCE WORKOUT MANAGER</p>
-        </div>
-    """, unsafe_allow_html=True)
+    # --- LOGO HOMEPAGE DA FILE LOCALE ---
+    col_l, col_r = st.columns([1, 3])
+    with col_l:
+        if os.path.exists("logo.png"):
+            st.image("logo.png", width=150)
+        else:
+            st.warning("Logo non trovato")
+    with col_r:
+        st.markdown("<h1 style='color: #00509e; margin-top: 20px;'>AQUATIME PERFORMANCE</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 20px; color: grey;'>Workout Manager</p>", unsafe_allow_html=True)
 
     # --- 1. RICERCA ---
+    st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=False):
         c1, c2 = st.columns(2)
         s_nome = c1.text_input("Nome:", key="sn").strip()
@@ -238,6 +243,8 @@ try:
                             get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
                             st.cache_data.clear()
                             st.rerun()
+            else:
+                st.info(f"Nessun dato negli ultimi 30 giorni.")
 
 except Exception as e:
     st.error(f"Errore tecnico: {e}")
