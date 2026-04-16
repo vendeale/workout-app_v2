@@ -76,7 +76,7 @@ def generate_pdf(df_atleta, nome, cognome):
         tz_roma = pytz.timezone('Europe/Rome')
         data_ora_roma = datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M:%S")
 
-        # Header PDF
+        # Header PDF (Manteniamo lo stile professionale nel documento)
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 45, 'F')
         pdf.set_text_color(255, 255, 255)
@@ -128,16 +128,16 @@ try:
     ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4"
     dati_raw = fetch_all_data(ID_FOGLIO)
 
-    # --- LOGO HOMEPAGE DA FILE LOCALE ---
-    col_l, col_r = st.columns([1, 3])
-    with col_l:
+    # --- LOGO HOMEPAGE CENTRATO ---
+    # Creiamo 3 colonne: vuota | logo | vuota per centrare l'immagine
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    
+    with col_center:
         if os.path.exists("logo.png"):
-            st.image("logo.png", width=150)
+            st.image("logo.png", use_container_width=True)
         else:
-            st.warning("Logo non trovato")
-    with col_r:
-        st.markdown("<h1 style='color: #00509e; margin-top: 20px;'>AQUATIME PERFORMANCE</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='font-size: 20px; color: grey;'>Workout Manager</p>", unsafe_allow_html=True)
+            st.warning("Assicurati che il file logo.png sia caricato su GitHub")
+            st.title("AQUATIME PERFORMANCE")
 
     # --- 1. RICERCA ---
     st.divider()
@@ -207,7 +207,7 @@ try:
                 else:
                     st.error("Compila tutti i campi obbligatori!")
 
-    # --- 3. ARCHIVIO (FILTRO ULTIMI 30 GIORNI) ---
+    # --- 3. ARCHIVIO (ULTIMI 30 GIORNI) ---
     st.divider()
     st.subheader("📊 Gestione Archivio (Ultimi 30 giorni)")
     if dati_raw:
