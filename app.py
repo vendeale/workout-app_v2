@@ -13,6 +13,18 @@ st.set_page_config(page_title="Aquatime Workout Manager", page_icon="🚴‍♂�
 # --- COSTANTI PRIVACY ---
 COLONNE_NASCOSTE = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
 
+# --- FUNZIONE PER RESETTARE IL FORM ---
+def reset_form_fields():
+    """Rimuove le chiavi dal session_state per svuotare i widget"""
+    keys_to_reset = [
+        "ins_n", "ins_c", "ins_sede", "ins_data", 
+        "ins_dur", "ins_dur_alt", "ins_prog", "ins_prog_alt", 
+        "ins_liv", "ins_liv_alt", "ins_vel", "ins_dist", "ins_cal"
+    ]
+    for key in keys_to_reset:
+        if key in st.session_state:
+            del st.session_state[key]
+
 # --- FUNZIONI DI ACCESSO AI DATI ---
 @st.cache_resource
 def get_gspread_client():
@@ -48,51 +60,34 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE) and c != 'GOOGLE_SHEET_ROW']
     return df[cols_to_keep].dropna(how='all').copy()
 
-# --- NUOVA LOGICA DI IDENTIFICAZIONE COLONNE PIÙ PRECISA ---
 def get_exact_col(columns, target):
     cols_up = [str(c).upper().strip() for c in columns]
-    
     if target == "KMH":
-        # Cerca specificamente KM/H o VELOCITÀ
         for i, c in enumerate(cols_up):
-            if "KM/H" in c or "VELOCIT" in c:
-                return columns[i]
-    
+            if "KM/H" in c or "VELOCIT" in c: return columns[i]
     if target == "KM":
-        # Cerca KM ma ESCLUDE KM/H
         for i, c in enumerate(cols_up):
-            if "KM" in c and "KM/H" not in c and "VELOCIT" not in c:
-                return columns[i]
-            if "DISTANZA" in c:
-                return columns[i]
-                
+            if "KM" in c and "KM/H" not in c and "VELOCIT" not in c: return columns[i]
+            if "DISTANZA" in c: return columns[i]
     if target == "DATA":
         for i, c in enumerate(cols_up):
-            if "DATA" in c and "NASCITA" not in c:
-                return columns[i]
-                
+            if "DATA" in c and "NASCITA" not in c: return columns[i]
     if target == "CALORIE":
         for i, c in enumerate(cols_up):
-            if "CAL" in c or "KCAL" in c:
-                return columns[i]
-                
+            if "CAL" in c or "KCAL" in c: return columns[i]
     if target == "PROGRAMMA":
         for i, c in enumerate(cols_up):
             if "PROGR" in c: return columns[i]
-            
     if target == "LIVELLO":
         for i, c in enumerate(cols_up):
             if "LIV" in c: return columns[i]
-
     return None
 
-# --- GENERAZIONE PDF ---
 def generate_pdf(df_atleta, nome_atleta):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
-        
         cols = df_atleta.columns.tolist()
         c_data = get_exact_col(cols, "DATA")
         c_km = get_exact_col(cols, "KM")
@@ -100,13 +95,9 @@ def generate_pdf(df_atleta, nome_atleta):
         c_cal = get_exact_col(cols, "CALORIE")
         c_prog = get_exact_col(cols, "PROGRAMMA")
         c_liv = get_exact_col(cols, "LIVELLO")
-
-        # Calcoli per l'intestazione
         km_vals = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
         cal_avg = df_atleta[c_cal].apply(force_numeric).mean() if c_cal else 0.0
-
-        # Header Grafico
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 40, 'F')
         pdf.set_text_color(255, 255, 255)
@@ -115,8 +106,6 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.cell(0, 10, "AQUATIME PERFORMANCE", align='C', new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("helvetica", '', 12)
         pdf.cell(0, 10, f"REPORT PERFORMANCE: {nome_atleta.upper()}", align='C', new_x="LMARGIN", new_y="NEXT")
-        
-        # Riepilogo Medie
         pdf.set_y(45)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", 'B', 11)
@@ -125,8 +114,6 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.cell(63, 10, f"KM/H MEDI: {kmh_avg:.1f}", 1, 0, 'C', True)
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
-
-        # Intestazione Tabella
         pdf.set_font("helvetica", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -135,26 +122,19 @@ def generate_pdf(df_atleta, nome_atleta):
         for i in range(len(headers)):
             pdf.cell(w[i], 8, headers[i], 1, 0, 'C', True)
         pdf.ln()
-
-        # Righe Tabella
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", '', 8)
         for _, row in df_atleta.iterrows():
-            # Pulizia Data
             data_val = str(row.get(c_data, ''))
             solo_data = data_val.split(' ')[0] if ' ' in data_val else data_val
-            
             pdf.cell(w[0], 7, solo_data, 1, 0, 'C')
             pdf.cell(w[1], 7, str(row.get(c_prog, ''))[:22], 1, 0, 'L')
             pdf.cell(w[2], 7, str(row.get(c_liv, ''))[:20], 1, 0, 'L')
-            # Valori numerici separati correttamente
             pdf.cell(w[3], 7, str(row.get(c_km, '0')), 1, 0, 'C')
             pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C')
             pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C')
-
         pdf_output = pdf.output()
         return bytes(pdf_output) if isinstance(pdf_output, bytearray) else pdf_output
-
     except Exception as e:
         st.error(f"Errore generazione PDF: {e}")
         return None
@@ -176,66 +156,62 @@ try:
         col1, col2 = st.columns(2)
         n_input = col1.text_input("Filtra Nome", key="src_n")
         c_input = col2.text_input("Filtra Cognome", key="src_c")
-        
         if (n_input or c_input) and dati_raw:
             df_full = pd.DataFrame(dati_raw)
             res = df_full[(df_full['Nome'].astype(str).str.contains(n_input, case=False, na=False)) & 
                           (df_full['Cognome'].astype(str).str.contains(c_input, case=False, na=False))].copy()
-            
             if not res.empty:
                 c_data = get_exact_col(res.columns, "DATA")
                 if c_data:
                     res[c_data] = pd.to_datetime(res[c_data], dayfirst=True, errors='coerce')
                     res = res.sort_values(c_data, ascending=False)
-                
                 df_view = filtra_privacy(res)
                 df_display = df_view.copy()
                 if c_data:
                     df_display[c_data] = df_display[c_data].dt.strftime('%d/%m/%Y')
-                
                 st.dataframe(df_display, use_container_width=True)
-
-                # Nome file dinamico
                 data_oggi = datetime.now().strftime("%Y%m%d")
                 nome_atleta_pulito = f"{n_input}_{c_input}".replace(" ", "_")
                 nome_file_pdf = f"Report_{data_oggi}_{nome_atleta_pulito}.pdf"
-
                 pdf_out = generate_pdf(df_view, f"{n_input} {c_input}")
                 if pdf_out:
                     st.download_button("📥 Scarica Report PDF", pdf_out, nome_file_pdf, "application/pdf", use_container_width=True)
             else:
                 st.warning("Nessun atleta trovato.")
 
-    # 3. NUOVA SESSIONE
+    # 3. NUOVA SESSIONE (Con reset logica)
     st.divider()
     st.subheader("📝 Nuova Sessione")
     with st.container(border=True):
         f1, f2, f3 = st.columns(3)
         nome_ins = f1.text_input("Nome *", key="ins_n")
         cognome_ins = f2.text_input("Cognome *", key="ins_c")
-        sede_ins = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Scegli sede...")
+        sede_ins = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Scegli sede...", key="ins_sede")
         
         st.write("---")
         c1, c2, c3, c4 = st.columns(4)
-        data_s = c1.date_input("Data *", value=None, format="DD/MM/YYYY")
+        data_s = c1.date_input("Data *", value=None, format="DD/MM/YYYY", key="ins_data")
         
-        dur_sel = c2.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
+        dur_sel = c2.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...", key="ins_dur")
         f_durata = dur_sel
-        if dur_sel == "Altro...": f_durata = c2.text_input("Specifica Sessione")
+        if dur_sel == "Altro...": 
+            f_durata = c2.text_input("Specifica Sessione", key="ins_dur_alt")
             
-        prg_sel = c3.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."], index=None, placeholder="Scegli...")
+        prg_sel = c3.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."], index=None, placeholder="Scegli...", key="ins_prog")
         f_prog = prg_sel
-        if prg_sel == "Altro...": f_prog = c3.text_input("Specifica Programma")
+        if prg_sel == "Altro...": 
+            f_prog = c3.text_input("Specifica Programma", key="ins_prog_alt")
             
-        liv_sel = c4.selectbox("Livello *", ["1-resistenza", "2-resistenza", "3-resistenza", "1-variabile", "2-variabile", "3-variabile", "4-variabile", "5-variabile", "6-variabile", "Altro..."], index=None, placeholder="Scegli...")
+        liv_sel = c4.selectbox("Livello *", ["1-resistenza", "2-resistenza", "3-resistenza", "1-variabile", "2-variabile", "3-variabile", "4-variabile", "5-variabile", "6-variabile", "Altro..."], index=None, placeholder="Scegli...", key="ins_liv")
         f_liv = liv_sel
-        if liv_sel == "Altro...": f_liv = c4.text_input("Specifica Livello")
+        if liv_sel == "Altro...": 
+            f_liv = c4.text_input("Specifica Livello", key="ins_liv_alt")
 
         st.write("---")
         f8, f9, f10 = st.columns(3)
-        vel = f8.number_input("Km/h *", min_value=0.0, step=0.1)
-        dist = f9.number_input("Km *", min_value=0.0, step=0.1)
-        cal = f10.number_input("Calorie *", min_value=0)
+        vel = f8.number_input("Km/h *", min_value=0.0, step=0.1, key="ins_vel")
+        dist = f9.number_input("Km *", min_value=0.0, step=0.1, key="ins_dist")
+        cal = f10.number_input("Calorie *", min_value=0, key="ins_cal")
 
         _, col_btn, _ = st.columns([2, 1, 2])
         if col_btn.button("Salva Sessione", use_container_width=True):
@@ -244,36 +220,37 @@ try:
                 sheet = client.open_by_key(ID_FOGLIO).sheet1
                 riga = [f"{nome_ins} {cognome_ins}", nome_ins, cognome_ins, 0, "", data_s.strftime("%d/%m/%Y"), f_durata, f_prog, f_liv, vel, dist, cal, sede_ins, 0, 0, 0]
                 sheet.append_row(riga)
+                
+                # SVUOTAMENTO CACHE E RESET FORM
                 st.cache_data.clear()
-                st.success("Salvato!")
+                reset_form_fields()
+                
+                # Messaggio di successo e rerun per applicare lo svuotamento
+                st.success("Salvato correttamente!")
                 st.rerun()
-            else: st.error("Compila i campi obbligatori (*)")
+            else: 
+                st.error("Compila i campi obbligatori (*)")
 
-    # 4. ARCHIVIO E CANCELLAZIONE
+    # 4. ARCHIVIO E CANCELLAZIONE (Invariato)
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
         df_glob = pd.DataFrame(dati_raw)
         c_data_g = get_exact_col(df_glob.columns, "DATA")
-        
         if c_data_g:
             df_glob[c_data_g] = pd.to_datetime(df_glob[c_data_g], dayfirst=True, errors='coerce')
             limite = datetime.now() - timedelta(days=30)
             df_recenti = df_glob[df_glob[c_data_g] >= limite].copy().sort_values(c_data_g, ascending=False)
-            
             if not df_recenti.empty:
                 df_rec_disp = filtra_privacy(df_recenti)
                 df_rec_disp[c_data_g] = df_rec_disp[c_data_g].dt.strftime('%d/%m/%Y')
                 st.dataframe(df_rec_disp, use_container_width=True)
-
                 with st.expander("🗑️ Cancella una riga dall'archivio"):
                     opzioni_cancella = []
                     for _, r in df_recenti.iterrows():
                         label = f"{r[c_data_g].strftime('%d/%m/%Y')} - {r['Nome']} {r['Cognome']}"
                         opzioni_cancella.append({"label": label, "row_number": r['GOOGLE_SHEET_ROW']})
-                    
                     scelta = st.selectbox("Seleziona la sessione da eliminare:", opzioni_cancella, format_func=lambda x: x["label"], index=None)
-                    
                     if st.button("Elimina Sessione"):
                         if scelta:
                             client = get_gspread_client()
@@ -282,6 +259,5 @@ try:
                             st.cache_data.clear()
                             st.success("Sessione eliminata!")
                             st.rerun()
-
 except Exception as e:
     st.error(f"Errore generale: {e}")
