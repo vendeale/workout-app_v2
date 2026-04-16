@@ -3,6 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+import pytz  # <--- Libreria per il fuso orario
 from fpdf import FPDF
 import io
 
@@ -26,14 +27,7 @@ def fetch_all_data(id_foglio):
         spreadsheet = client.open_by_key(id_foglio)
         sheet = spreadsheet.sheet1
         data = sheet.get_all_records()
-        
-        # Pulizia righe vuote
-        puliti = []
-        for r in data:
-            nome_val = r.get('Nome')
-            if nome_val is not None and str(nome_val).strip() != "":
-                puliti.append(r)
-        return puliti
+        return [r for r in data if r.get('Nome') and str(r.get('Nome')).strip() != ""]
     except Exception as e:
         return []
 
@@ -51,7 +45,7 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].dropna(how='all').copy()
 
-# --- GENERAZIONE PDF AGGIORNATA ---
+# --- GENERAZIONE PDF CON FUSO ORARIO ROMA ---
 def generate_pdf(df_atleta, nome, cognome):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
@@ -73,6 +67,10 @@ def generate_pdf(df_atleta, nome, cognome):
         kmh_avg = pd.to_numeric(df_atleta[c_kmh], errors='coerce').mean() if c_kmh else 0
         cal_avg = pd.to_numeric(df_atleta[c_cal], errors='coerce').mean() if c_cal else 0
 
+        # Impostazione Fuso Orario Roma
+        tz_roma = pytz.timezone('Europe/Rome')
+        data_ora_roma = datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M:%S")
+
         # Header Blu
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 45, 'F')
@@ -81,14 +79,11 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.set_y(10)
         pdf.cell(0, 10, "AQUATIME PERFORMANCE", 0, 1, 'C')
         
-        # Sottotitolo con Nome e Cognome
         pdf.set_font("Arial", 'B', 14)
         pdf.cell(0, 10, f"REPORT ATLETA: {nome.upper()} {cognome.upper()}", 0, 1, 'C')
         
-        # Data di produzione
         pdf.set_font("Arial", 'I', 10)
-        data_prod = datetime.now().strftime("%d/%m/%Y %H:%M")
-        pdf.cell(0, 8, f"Documento generato il: {data_prod}", 0, 1, 'C')
+        pdf.cell(0, 8, f"Generato a Roma il: {data_ora_roma}", 0, 1, 'C')
         
         pdf.set_y(50)
         pdf.set_text_color(0, 0, 0)
@@ -152,7 +147,6 @@ try:
             risultati = df_tot[mask].copy()
             
             if not risultati.empty:
-                # Recuperiamo Nome e Cognome precisi dal primo risultato per il PDF
                 nome_reale = risultati.iloc[0]['Nome']
                 cognome_reale = risultati.iloc[0]['Cognome']
                 
@@ -170,7 +164,7 @@ try:
                 pdf_file = generate_pdf(df_display, nome_reale, cognome_reale)
                 if pdf_file:
                     nome_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
-                    st.download_button("📥 Scarica Report PDF Completo", pdf_file, nome_file, "application/pdf")
+                    st.download_button("📥 Scarica Report PDF (Orario Roma)", pdf_file, nome_file, "application/pdf")
             else:
                 st.warning("Atleta non trovato.")
 
@@ -204,7 +198,7 @@ try:
                     riga = [f"{n_ins} {c_ins}", n_ins, c_ins, 0, "", d_ins.strftime("%d/%m/%Y"), sess_sel, prog_sel, liv_sel, v_ins, k_ins, cl_ins, s_ins, 0, 0, 0]
                     sheet.append_row(riga)
                     st.cache_data.clear()
-                    st.success("Dati salvati con successo!")
+                    st.success("Dati salvati correttamente!")
                     st.rerun()
 
     # --- 3. GESTIONE ARCHIVIO ---
@@ -214,13 +208,13 @@ try:
         df_glob = filtra_privacy(pd.DataFrame(dati_raw))
         st.dataframe(df_glob.tail(15).iloc[::-1], use_container_width=True)
 
-        with st.expander("🗑️ Cancella riga errata"):
+        with st.expander("🗑️ Cancella riga"):
             opzioni = [{"label": f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')}", "idx": i+2} for i, r in enumerate(dati_raw)]
-            sel = st.selectbox("Seleziona riga da eliminare:", opzioni[::-1], format_func=lambda x: x["label"])
-            if st.button("Conferma Eliminazione"):
+            sel = st.selectbox("Seleziona:", opzioni[::-1], format_func=lambda x: x["label"])
+            if st.button("Elimina definitivamente"):
                 get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
                 st.cache_data.clear()
                 st.rerun()
 
 except Exception as e:
-    st.error(f"Errore generale nell'applicazione: {e}")
+    st.error(f"Errore: {e}")
