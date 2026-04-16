@@ -4,3 +4,4 @@ gspread
 google-auth
 matplotlib
 fpdf2
+pytz
