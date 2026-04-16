@@ -26,12 +26,10 @@ def fetch_all_data(id_foglio):
         client = get_gspread_client()
         spreadsheet = client.open_by_key(id_foglio)
         sheet = spreadsheet.sheet1
-        # Leggiamo tutto includendo i numeri di riga
         data = sheet.get_all_records()
         cleaned_data = []
         for i, r in enumerate(data):
             new_r = {str(k).strip(): v for k, v in r.items()}
-            # Aggiungiamo l'indice reale del foglio Google (header=1 + index=0-based + 2)
             new_r['GOOGLE_SHEET_ROW'] = i + 2
             if new_r.get('Nome') and str(new_r.get('Nome')).strip() != "":
                 cleaned_data.append(new_r)
@@ -47,7 +45,6 @@ def force_numeric(val):
         return 0.0
 
 def filtra_privacy(df):
-    # Rimuoviamo anche la colonna tecnica del numero riga dalla visualizzazione
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE) and c != 'GOOGLE_SHEET_ROW']
     return df[cols_to_keep].dropna(how='all').copy()
 
@@ -59,7 +56,7 @@ def get_col_name(columns, keywords, avoid=None):
             return col
     return None
 
-# --- GENERAZIONE PDF ---
+# --- GENERAZIONE PDF (VERSIONE ROBUSTA) ---
 def generate_pdf(df_atleta, nome_atleta):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
@@ -115,7 +112,12 @@ def generate_pdf(df_atleta, nome_atleta):
             pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C')
             pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C')
 
-        return pdf.output()
+        # Conversione sicura in bytes per Streamlit
+        pdf_output = pdf.output()
+        if isinstance(pdf_output, bytearray):
+            return bytes(pdf_output)
+        return pdf_output
+
     except Exception as e:
         st.error(f"Errore generazione PDF: {e}")
         return None
@@ -156,9 +158,17 @@ try:
                 
                 st.dataframe(df_display, use_container_width=True)
 
+                # Generazione PDF
                 pdf_out = generate_pdf(df_view, f"{n_input} {c_input}")
                 if pdf_out:
-                    st.download_button("📥 Scarica Report PDF", pdf_out, f"Report_{n_input}.pdf", "application/pdf", key="dl_btn", use_container_width=True)
+                    st.download_button(
+                        label="📥 Scarica Report PDF", 
+                        data=pdf_out, 
+                        file_name=f"Report_{n_input}.pdf", 
+                        mime="application/pdf", 
+                        key="dl_btn", 
+                        use_container_width=True
+                    )
             else:
                 st.warning("Nessun atleta trovato.")
 
@@ -205,7 +215,7 @@ try:
                 st.rerun()
             else: st.error("Compila i campi obbligatori (*)")
 
-    # 4. ARCHIVIO E CANCELLAZIONE (LOGICA INFALLIBILE)
+    # 4. ARCHIVIO E CANCELLAZIONE
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
@@ -237,13 +247,15 @@ try:
                         if scelta:
                             client = get_gspread_client()
                             sheet = client.open_by_key(ID_FOGLIO).sheet1
-                            # Eliminiamo direttamente usando il numero riga salvato
                             sheet.delete_rows(scelta['row_number'])
                             st.cache_data.clear()
                             st.success(f"Sessione eliminata correttamente dal foglio!")
                             st.rerun()
                         else:
                             st.warning("Seleziona prima una riga.")
+
+except Exception as e:
+    st.error(f"Errore generale: {e}")
 
 except Exception as e:
     st.error(f"Errore generale: {e}")
