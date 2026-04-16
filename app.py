@@ -26,7 +26,9 @@ def fetch_all_data(id_foglio):
         client = get_gspread_client()
         spreadsheet = client.open_by_key(id_foglio)
         sheet = spreadsheet.sheet1
-        return sheet.get_all_records()
+        data = sheet.get_all_records()
+        # FILTRO ANTI-NONE: Rimuove le righe dove il campo 'Nome' è vuoto o None
+        return [r for r in data if r.get('Nome') and str(r.get('Nome')).strip() != ""]
     except Exception as e:
         st.error(f"Errore di connessione a Google Sheets: {e}")
         return []
@@ -45,13 +47,12 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].copy()
 
-# --- FUNZIONE GENERAZIONE PDF (SOLO TABELLA E STATISTICHE) ---
+# --- FUNZIONE GENERAZIONE PDF (TABELLARE + RIEPILOGO) ---
 def generate_pdf(df_atleta, nome, cognome):
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    # Identificazione colonne
     c_data = get_col_name(df_atleta.columns, ["DATA"], avoid=["NASCITA"])
     c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI"])
     c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA"])
@@ -59,10 +60,14 @@ def generate_pdf(df_atleta, nome, cognome):
     c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"])
     c_liv = get_col_name(df_atleta.columns, ["LIVELLO"])
 
-    # Calcolo medie e totali per il riepilogo
-    km_tot = pd.to_numeric(df_atleta[c_km], errors='coerce').sum() if c_km else 0
-    kmh_avg = pd.to_numeric(df_atleta[c_kmh], errors='coerce').mean() if c_kmh else 0
-    cal_avg = pd.to_numeric(df_atleta[c_cal], errors='coerce').mean() if c_cal else 0
+    # Conversione numerica sicura per le medie
+    km_vals = pd.to_numeric(df_atleta[c_km], errors='coerce').fillna(0)
+    kmh_vals = pd.to_numeric(df_atleta[c_kmh], errors='coerce').fillna(0)
+    cal_vals = pd.to_numeric(df_atleta[c_cal], errors='coerce').fillna(0)
+
+    km_tot = km_vals.sum()
+    kmh_avg = kmh_vals.mean() if not kmh_vals.empty else 0
+    cal_avg = cal_vals.mean() if not cal_vals.empty else 0
 
     # Header Blu
     pdf.set_fill_color(0, 80, 158)
@@ -77,7 +82,7 @@ def generate_pdf(df_atleta, nome, cognome):
     pdf.set_y(45)
     pdf.set_text_color(0, 0, 0)
     
-    # --- SEZIONE RIEPILOGO STATISTICO ---
+    # Riepilogo
     pdf.set_font("Arial", 'B', 12)
     pdf.set_fill_color(245, 245, 245)
     pdf.cell(0, 10, "STATISTICHE GENERALI DEL PERIODO", 0, 1, 'L')
@@ -87,10 +92,7 @@ def generate_pdf(df_atleta, nome, cognome):
     pdf.cell(64, 10, f"Media Calorie: {cal_avg:.0f}", 1, 1, 'C', True)
     pdf.ln(5)
 
-    # --- TABELLA DETTAGLIATA ---
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(0, 10, "DETTAGLIO SESSIONI", 0, 1, 'L')
-    
+    # Tabella
     pdf.set_font("Arial", 'B', 9)
     pdf.set_fill_color(0, 80, 158)
     pdf.set_text_color(255, 255, 255)
@@ -133,10 +135,13 @@ try:
         if (s_nome or s_cognome) and dati_raw:
             df_tot = pd.DataFrame(dati_raw)
             df_tot.columns = [str(c).strip() for c in df_tot.columns]
+            
+            # Filtro ricerca
             mask = (df_tot['Nome'].astype(str).str.contains(s_nome.strip(), case=False, na=False)) & \
                    (df_tot['Cognome'].astype(str).str.contains(s_cognome.strip(), case=False, na=False))
             
-            risultati = df_tot[mask].copy()
+            risultati = df_tot[mask].dropna(subset=['Nome']).copy()
+            
             if not risultati.empty:
                 col_data = get_col_name(risultati.columns, ["DATA"], avoid=["NASCITA"])
                 if col_data:
@@ -149,9 +154,9 @@ try:
                 
                 st.dataframe(df_display.iloc[::-1], use_container_width=True)
                 pdf_file = generate_pdf(df_display, s_nome, s_cognome)
-                st.download_button("📥 Scarica Report PDF (Tabellare)", pdf_file, f"Report_{s_nome}_{s_cognome}.pdf", "application/pdf")
+                st.download_button("📥 Scarica Report PDF", pdf_file, f"Report_{s_nome}_{s_cognome}.pdf", "application/pdf")
             else:
-                st.warning("Nessun risultato.")
+                st.warning("Nessun risultato trovato.")
 
     # --- 2. FORM INSERIMENTO ---
     st.divider()
@@ -196,15 +201,18 @@ try:
         df_glob = pd.DataFrame(dati_raw)
         df_glob.columns = [str(c).strip() for c in df_glob.columns]
         
-        st.write("Ultime 10 sessioni (Colonne sensibili nascoste):")
+        st.write("Ultime sessioni (Colonne sensibili nascoste):")
         df_glob_privacy = filtra_privacy(df_glob)
-        st.dataframe(df_glob_privacy.tail(10).iloc[::-1], use_container_width=True)
+        # Rimuove righe None dalla visualizzazione globale
+        df_glob_privacy = df_glob_privacy.dropna(subset=['Nome'])
+        st.dataframe(df_glob_privacy.tail(15).iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ **CANCELLA INSERIMENTO ERRATO**"):
             st.warning("Attenzione: l'eliminazione è irreversibile.")
             opzioni_delete = []
             col_d_p = get_col_name(df_glob.columns, ["DATA"], avoid=["NASCITA"]) or "Data Pedalata"
             for i, r in enumerate(dati_raw):
+                # Usiamo dati_raw originale per avere l'indice corretto di riga
                 label = f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')} - {r.get(col_d_p,'')}"
                 opzioni_delete.append({"label": label, "index": i + 2})
             
