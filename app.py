@@ -154,7 +154,7 @@ try:
                 if pdf_bytes:
                     st.download_button("📥 Scarica Report PDF", pdf_bytes, f"Report_{n_input}.pdf", "application/pdf", use_container_width=True)
 
-    # 3. FORM INSERIMENTO (MODIFICATO: CAMPI VUOTI)
+    # 3. FORM INSERIMENTO (MODIFICATO: DATA E CAMPI VUOTI)
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -165,8 +165,8 @@ try:
             sede = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Seleziona sede...")
             
             f4, f5, f6, f7 = st.columns(4)
-            # La data di default è oggi, ma l'utente può cambiarla
-            data_s = f4.date_input("Data *", format="DD/MM/YYYY")
+            # Campo data impostato su None per forzare la scelta
+            data_s = f4.date_input("Data *", value=None, format="DD/MM/YYYY")
             durata = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli durata...")
             prog = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"], index=None, placeholder="Scegli programma...")
             liv = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"], index=None, placeholder="Scegli livello...")
@@ -177,7 +177,8 @@ try:
             cal = f10.number_input("Calorie *", min_value=0, value=0)
 
             if st.form_submit_button("Salva sessione"):
-                if nome and cognome and sede and durata and prog and liv:
+                # Controllo rigoroso su tutti i campi, inclusa la data
+                if nome and cognome and sede and data_s and durata and prog and liv:
                     client = get_gspread_client()
                     sheet = client.open_by_key(ID_FOGLIO).sheet1
                     riga = [f"{nome} {cognome}", nome, cognome, 0, "", data_s.strftime("%d/%m/%Y"), durata, prog, liv, vel, dist, cal, sede, 0, 0, 0]
@@ -186,7 +187,7 @@ try:
                     st.success("Dati inviati correttamente!")
                     st.rerun()
                 else:
-                    st.error("Per favore, compila tutti i campi obbligatori (*) e seleziona le opzioni dai menu.")
+                    st.error("Errore: Compila tutti i campi obbligatori (*) e assicurati di aver selezionato la Data.")
 
     # 4. STORICO 30 GIORNI E CANCELLAZIONE
     st.divider()
