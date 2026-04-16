@@ -27,7 +27,6 @@ def fetch_all_data(id_foglio):
         spreadsheet = client.open_by_key(id_foglio)
         sheet = spreadsheet.sheet1
         data = sheet.get_all_records()
-        # Pulizia nomi colonne (rimozione spazi bianchi)
         cleaned_data = []
         for r in data:
             new_r = {str(k).strip(): v for k, v in r.items()}
@@ -72,12 +71,8 @@ def generate_pdf(df_atleta, nome_atleta):
         c_liv = get_col_name(cols, ["LIVELLO"])
 
         km_vals = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
-        kmh_vals = df_atleta[c_kmh].apply(force_numeric) if c_kmh else pd.Series([0.0])
-        cal_vals = df_atleta[c_cal].apply(force_numeric) if c_cal else pd.Series([0.0])
-
-        km_tot = km_vals.sum()
-        kmh_avg = kmh_vals.mean()
-        cal_avg = cal_vals.mean()
+        kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
+        cal_avg = df_atleta[c_cal].apply(force_numeric).mean() if c_cal else 0.0
 
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 40, 'F')
@@ -92,7 +87,7 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", 'B', 11)
         pdf.set_fill_color(235, 235, 235)
-        pdf.cell(63, 10, f"KM TOTALI: {km_tot:.2f}", 1, 0, 'C', True)
+        pdf.cell(63, 10, f"KM TOTALI: {km_vals.sum():.2f}", 1, 0, 'C', True)
         pdf.cell(63, 10, f"KM/H MEDI: {kmh_avg:.1f}", 1, 0, 'C', True)
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
@@ -206,7 +201,7 @@ try:
                 st.rerun()
             else: st.error("Compila i campi obbligatori (*)")
 
-    # 4. ARCHIVIO E CANCELLAZIONE
+    # 4. ARCHIVIO E CANCELLAZIONE (LOGICA CORRETTA)
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
@@ -216,19 +211,24 @@ try:
         if c_data_g:
             df_glob[c_data_g] = pd.to_datetime(df_glob[c_data_g], dayfirst=True, errors='coerce')
             limite = datetime.now() - timedelta(days=30)
-            df_rec = df_glob[df_glob[c_data_g] >= limite].copy().sort_values(c_data_g, ascending=False)
+            df_recenti = df_glob[df_glob[c_data_g] >= limite].copy().sort_values(c_data_g, ascending=False)
             
-            if not df_rec.empty:
-                df_rec_disp = filtra_privacy(df_rec)
+            if not df_recenti.empty:
+                df_rec_disp = filtra_privacy(df_recenti)
                 df_rec_disp[c_data_g] = df_rec_disp[c_data_g].dt.strftime('%d/%m/%Y')
                 st.dataframe(df_rec_disp, use_container_width=True)
 
                 with st.expander("🗑️ Cancella una riga dall'archivio"):
-                    # Creiamo una lista di opzioni che punta alla riga reale del foglio (index + 2 perché 1-based e header)
                     opzioni_cancella = []
-                    for idx, r in df_rec.iterrows():
+                    for idx, r in df_recenti.iterrows():
                         label = f"{r[c_data_g].strftime('%d/%m/%Y')} - {r['Nome']} {r['Cognome']}"
-                        opzioni_cancella.append({"label": label, "row_idx": idx + 2})
+                        # Salviamo i valori per identificare la riga in modo univoco
+                        opzioni_cancella.append({
+                            "label": label, 
+                            "nome": r['Nome'], 
+                            "cognome": r['Cognome'], 
+                            "data": r[c_data_g].strftime('%d/%m/%Y')
+                        })
                     
                     scelta = st.selectbox("Seleziona la sessione da eliminare:", opzioni_cancella, format_func=lambda x: x["label"], index=None, placeholder="Scegli una sessione...")
                     
@@ -236,10 +236,26 @@ try:
                         if scelta:
                             client = get_gspread_client()
                             sheet = client.open_by_key(ID_FOGLIO).sheet1
-                            sheet.delete_rows(scelta["row_idx"])
-                            st.cache_data.clear()
-                            st.success("Sessione eliminata correttamente!")
-                            st.rerun()
+                            
+                            # CERCHIAMO LA RIGA NEL FOGLIO (evitando errori di indice)
+                            all_rows = sheet.get_all_records()
+                            row_to_del = -1
+                            
+                            for i, row in enumerate(all_rows):
+                                if (str(row.get('Nome')).strip() == str(scelta['nome']).strip() and 
+                                    str(row.get('Cognome')).strip() == str(scelta['cognome']).strip() and 
+                                    str(row.get('DATA')).strip() == str(scelta['data']).strip()):
+                                    # +2 perché: header è riga 1, gli indici di enumerate partono da 0
+                                    row_to_del = i + 2
+                                    break
+                            
+                            if row_to_del != -1:
+                                sheet.delete_rows(row_to_del)
+                                st.cache_data.clear()
+                                st.success(f"Sessione di {scelta['label']} eliminata!")
+                                st.rerun()
+                            else:
+                                st.error("Impossibile trovare la riga nel foglio Google.")
                         else:
                             st.warning("Seleziona prima una riga.")
 
