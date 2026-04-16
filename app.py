@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from fpdf import FPDF
 import io
@@ -45,7 +45,7 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].dropna(how='all').copy()
 
-# --- GENERAZIONE PDF AGGIORNATA (FIX KM) ---
+# --- GENERAZIONE PDF ---
 def generate_pdf(df_atleta, nome, cognome):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
@@ -59,24 +59,19 @@ def generate_pdf(df_atleta, nome, cognome):
         c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"])
         c_liv = get_col_name(df_atleta.columns, ["LIVELLO"])
 
-        # Funzione di pulizia numerica robusta per gestire virgole e stringhe sporche
         def force_numeric(val):
             if val is None or val == "": return 0.0
             try:
-                # Trasforma "10,5" in "10.5" e rimuove spazi
                 s = str(val).replace(',', '.').strip()
                 return float(s)
             except:
                 return 0.0
 
-        # Calcoli Statistici
         km_vals = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
         km_tot = km_vals.sum()
-        
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
         cal_avg = df_atleta[c_cal].apply(force_numeric).mean() if c_cal else 0.0
 
-        # Header e Fuso Orario Roma
         tz_roma = pytz.timezone('Europe/Rome')
         data_ora_roma = datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M:%S")
 
@@ -102,7 +97,6 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.cell(64, 10, f"Media Calorie: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
-        # Tabella sessioni
         pdf.set_font("Arial", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -167,7 +161,7 @@ try:
                     n_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
                     st.download_button("📥 Scarica Report PDF", pdf_file, n_file, "application/pdf")
 
-    # --- 2. FORM INSERIMENTO (NESSUN DEFAULT) ---
+    # --- 2. FORM INSERIMENTO ---
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -202,27 +196,47 @@ try:
                 else:
                     st.error("Compila tutti i campi obbligatori!")
 
-    # --- 3. ARCHIVIO ---
+    # --- 3. ARCHIVIO (FILTRO ULTIMI 30 GIORNI) ---
     st.divider()
-    st.subheader("📊 Gestione Archivio")
+    st.subheader("📊 Gestione Archivio (Ultimi 30 giorni)")
     if dati_raw:
-        df_glob = filtra_privacy(pd.DataFrame(dati_raw))
-        st.dataframe(df_glob.tail(15).iloc[::-1], use_container_width=True)
-
-        with st.expander("🗑️ Cancella riga"):
-            col_data_label = get_col_name(df_glob.columns, ["DATA"], avoid=["NASCITA"])
-            opzioni = []
-            for i, r in enumerate(dati_raw):
-                data_str = r.get(col_data_label, "N/D")
-                label = f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')} - Data: {data_str}"
-                opzioni.append({"label": label, "idx": i+2})
+        df_glob = pd.DataFrame(dati_raw)
+        df_glob.columns = [str(c).strip() for c in df_glob.columns]
+        col_data_glob = get_col_name(df_glob.columns, ["DATA"], avoid=["NASCITA"])
+        
+        if col_data_glob:
+            # Convertiamo la colonna data per il filtraggio
+            df_glob[col_data_glob] = pd.to_datetime(df_glob[col_data_glob], dayfirst=True, errors='coerce')
             
-            sel = st.selectbox("Seleziona sessione:", opzioni[::-1], format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
-            if st.button("Conferma Eliminazione"):
-                if sel:
-                    get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
-                    st.cache_data.clear()
-                    st.rerun()
+            # Calcolo soglia temporale (Fuso Roma)
+            tz_roma = pytz.timezone('Europe/Rome')
+            oggi = datetime.now(tz_roma).replace(hour=0, minute=0, second=0, microsecond=0)
+            limite_30gg = oggi - timedelta(days=30)
+            
+            # Applichiamo il filtro temporale
+            df_recenti = df_glob[df_glob[col_data_glob] >= limite_30gg].copy()
+            
+            # Pulizia per la visualizzazione
+            df_recenti_display = filtra_privacy(df_recenti)
+            df_recenti_display[col_data_glob] = df_recenti_display[col_data_glob].dt.strftime('%d/%m/%Y')
+            
+            st.write(f"Record trovati dal {limite_30gg.strftime('%d/%m/%Y')}: {len(df_recenti_display)}")
+            st.dataframe(df_recenti_display.iloc[::-1], use_container_width=True)
+
+            with st.expander("🗑️ Cancella riga"):
+                opzioni = []
+                for idx, r in df_recenti.iterrows():
+                    # Usiamo l'indice originale del DataFrame (+2 per riga Excel)
+                    data_str = r[col_data_glob].strftime('%d/%m/%Y') if pd.notnull(r[col_data_glob]) else "N/D"
+                    label = f"Riga {idx+2}: {r.get('Nome','')} {r.get('Cognome','')} - Data: {data_str}"
+                    opzioni.append({"label": label, "idx": idx+2})
+                
+                sel = st.selectbox("Seleziona sessione:", opzioni[::-1], format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
+                if st.button("Conferma Eliminazione"):
+                    if sel:
+                        get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
+                        st.cache_data.clear()
+                        st.rerun()
 
 except Exception as e:
     st.error(f"Errore: {e}")
