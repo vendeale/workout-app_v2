@@ -36,6 +36,7 @@ def fetch_all_data(id_foglio):
 def force_numeric(val):
     if val is None or val == "": return 0.0
     try:
+        # Gestisce sia il punto che la virgola come separatori decimali
         s = str(val).replace(',', '.').strip()
         return float(s)
     except:
@@ -54,13 +55,14 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].dropna(how='all').copy()
 
-# --- GENERAZIONE PDF ---
+# --- GENERAZIONE PDF AGGIORNATA ---
 def generate_pdf(df_atleta, nome, cognome):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         
+        # Identificazione colonne
         c_data = get_col_name(df_atleta.columns, ["DATA"], avoid=["NASCITA"])
         c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI", "KM"])
         c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA"])
@@ -68,15 +70,19 @@ def generate_pdf(df_atleta, nome, cognome):
         c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"])
         c_liv = get_col_name(df_atleta.columns, ["LIVELLO"])
 
-        km_vals = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
-        km_tot = km_vals.sum()
-        kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
-        cal_avg = df_atleta[c_cal].apply(force_numeric).mean() if c_cal else 0.0
+        # CALCOLI DISTINTI: Somma per i Km, Media per Km/h
+        valori_km = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
+        valori_kmh = df_atleta[c_kmh].apply(force_numeric) if c_kmh else pd.Series([0.0])
+        valori_cal = df_atleta[c_cal].apply(force_numeric) if c_cal else pd.Series([0.0])
+
+        km_tot_somma = valori_km.sum() # SOMMA
+        kmh_media = valori_kmh.mean()   # MEDIA
+        cal_media = valori_cal.mean()   # MEDIA
 
         tz_roma = pytz.timezone('Europe/Rome')
         data_ora_roma = datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M:%S")
 
-        # Header PDF (Manteniamo lo stile professionale nel documento)
+        # Header PDF
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 45, 'F')
         pdf.set_text_color(255, 255, 255)
@@ -92,14 +98,16 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", 'B', 12)
         pdf.set_fill_color(245, 245, 245)
-        pdf.cell(0, 10, "RIEPILOGO GENERALE", 0, 1, 'L')
+        pdf.cell(0, 10, "RIEPILOGO PERFORMANCE", 0, 1, 'L')
+        
         pdf.set_font("Arial", '', 10)
-        pdf.cell(63, 10, f"Km Totali: {km_tot:.2f}", 1, 0, 'C', True)
-        pdf.cell(63, 10, f"Media Km/h: {kmh_avg:.1f}", 1, 0, 'C', True)
-        pdf.cell(64, 10, f"Media Calorie: {cal_avg:.0f}", 1, 1, 'C', True)
+        # Visualizzazione chiara dei risultati calcolati
+        pdf.cell(63, 10, f"Km Totali (Somma): {km_tot_somma:.2f}", 1, 0, 'C', True)
+        pdf.cell(63, 10, f"Km/h (Media): {kmh_media:.1f}", 1, 0, 'C', True)
+        pdf.cell(64, 10, f"Kcal (Media): {cal_media:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
-        # Tabella PDF
+        # Tabella sessioni
         pdf.set_font("Arial", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -129,14 +137,11 @@ try:
     dati_raw = fetch_all_data(ID_FOGLIO)
 
     # --- LOGO HOMEPAGE CENTRATO ---
-    # Creiamo 3 colonne: vuota | logo | vuota per centrare l'immagine
     col_left, col_center, col_right = st.columns([1, 2, 1])
-    
     with col_center:
         if os.path.exists("logo.png"):
             st.image("logo.png", use_container_width=True)
         else:
-            st.warning("Assicurati che il file logo.png sia caricato su GitHub")
             st.title("AQUATIME PERFORMANCE")
 
     # --- 1. RICERCA ---
