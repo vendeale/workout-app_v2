@@ -129,8 +129,8 @@ try:
     st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=False):
         col1, col2 = st.columns(2)
-        n_input = col1.text_input("Filtra Nome")
-        c_input = col2.text_input("Filtra Cognome")
+        n_input = col1.text_input("Filtra Nome", value="")
+        c_input = col2.text_input("Filtra Cognome", value="")
         
         if (n_input or c_input) and dati_raw:
             df_full = pd.DataFrame(dati_raw)
@@ -154,36 +154,39 @@ try:
                 if pdf_bytes:
                     st.download_button("📥 Scarica Report PDF", pdf_bytes, f"Report_{n_input}.pdf", "application/pdf", use_container_width=True)
 
-    # 3. FORM INSERIMENTO
+    # 3. FORM INSERIMENTO (MODIFICATO: CAMPI VUOTI)
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
         with st.form("insert_form", clear_on_submit=True):
             f1, f2, f3 = st.columns(3)
-            nome = f1.text_input("Nome *")
-            cognome = f2.text_input("Cognome *")
-            sede = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Scegli sede...")
+            nome = f1.text_input("Nome *", value="")
+            cognome = f2.text_input("Cognome *", value="")
+            sede = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Seleziona sede...")
             
             f4, f5, f6, f7 = st.columns(4)
+            # La data di default è oggi, ma l'utente può cambiarla
             data_s = f4.date_input("Data *", format="DD/MM/YYYY")
-            durata = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."])
-            prog = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"])
-            liv = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"])
+            durata = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli durata...")
+            prog = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"], index=None, placeholder="Scegli programma...")
+            liv = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"], index=None, placeholder="Scegli livello...")
             
             f8, f9, f10 = st.columns(3)
-            vel = f8.number_input("Km/h *", min_value=0.0, step=0.1)
-            dist = f9.number_input("Km *", min_value=0.0, step=0.1)
-            cal = f10.number_input("Calorie *", min_value=0)
+            vel = f8.number_input("Km/h *", min_value=0.0, step=0.1, value=0.0)
+            dist = f9.number_input("Km *", min_value=0.0, step=0.1, value=0.0)
+            cal = f10.number_input("Calorie *", min_value=0, value=0)
 
             if st.form_submit_button("Salva sessione"):
-                if nome and cognome and sede:
+                if nome and cognome and sede and durata and prog and liv:
                     client = get_gspread_client()
                     sheet = client.open_by_key(ID_FOGLIO).sheet1
                     riga = [f"{nome} {cognome}", nome, cognome, 0, "", data_s.strftime("%d/%m/%Y"), durata, prog, liv, vel, dist, cal, sede, 0, 0, 0]
                     sheet.append_row(riga)
                     st.cache_data.clear()
-                    st.success("Dati inviati!")
+                    st.success("Dati inviati correttamente!")
                     st.rerun()
+                else:
+                    st.error("Per favore, compila tutti i campi obbligatori (*) e seleziona le opzioni dai menu.")
 
     # 4. STORICO 30 GIORNI E CANCELLAZIONE
     st.divider()
@@ -199,14 +202,12 @@ try:
             df_recenti = df_glob[df_glob[c_data_g] >= limite].copy()
             
             if not df_recenti.empty:
-                # Ordiniamo l'archivio visualizzato: più recente in alto
                 df_rec_view = filtra_privacy(df_recenti).sort_values(c_data_g, ascending=False)
                 df_rec_view_display = df_rec_view.copy()
                 df_rec_view_display[c_data_g] = df_rec_view_display[c_data_g].dt.strftime('%d/%m/%Y')
                 st.dataframe(df_rec_view_display, use_container_width=True)
 
                 with st.expander("🗑️ Cancella una riga dall'archivio"):
-                    # Creiamo le opzioni partendo dal dataframe già ordinato (più recenti prima)
                     opzioni = []
                     for idx, r in df_rec_view.iterrows():
                         d_str = r[c_data_g].strftime('%d/%m/%Y')
@@ -218,7 +219,7 @@ try:
                         opzioni, 
                         format_func=lambda x: x["label"], 
                         index=None,
-                        placeholder="Seleziona un'opzione..."
+                        placeholder="Seleziona una sessione..."
                     )
                     
                     if st.button("Conferma Eliminazione", type="primary"):
@@ -230,7 +231,7 @@ try:
                             st.success("Riga eliminata!")
                             st.rerun()
             else:
-                st.info("Nessuna sessione negli ultimi 30 giorni.")
+                st.info("Nessuna sessione registrata negli ultimi 30 giorni.")
 
 except Exception as e:
     st.error(f"Errore: {e}")
