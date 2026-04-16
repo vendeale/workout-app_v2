@@ -71,7 +71,6 @@ def generate_pdf(df_atleta, nome_atleta):
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean()
         cal_avg = df_atleta[c_cal].apply(force_numeric).mean()
 
-        # Header
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 40, 'F')
         pdf.set_text_color(255, 255, 255)
@@ -81,7 +80,6 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.set_font("Arial", '', 12)
         pdf.cell(0, 10, f"REPORT PERFORMANCE: {nome_atleta.upper()}", 0, 1, 'C')
         
-        # Riepilogo Statistico
         pdf.set_y(45)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", 'B', 11)
@@ -91,7 +89,6 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
-        # Tabella
         pdf.set_font("Arial", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -113,7 +110,6 @@ def generate_pdf(df_atleta, nome_atleta):
 
         return pdf.output(dest='S').encode('latin-1')
     except Exception as e:
-        st.error(f"Errore PDF: {e}")
         return None
 
 # --- LOGICA APP ---
@@ -166,7 +162,7 @@ try:
             f1, f2, f3 = st.columns(3)
             nome = f1.text_input("Nome *")
             cognome = f2.text_input("Cognome *")
-            sede = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None)
+            sede = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Scegli sede...")
             
             f4, f5, f6, f7 = st.columns(4)
             data_s = f4.date_input("Data *", format="DD/MM/YYYY")
@@ -203,19 +199,28 @@ try:
             df_recenti = df_glob[df_glob[c_data_g] >= limite].copy()
             
             if not df_recenti.empty:
+                # Ordiniamo l'archivio visualizzato: più recente in alto
                 df_rec_view = filtra_privacy(df_recenti).sort_values(c_data_g, ascending=False)
-                df_rec_view[c_data_g] = df_rec_view[c_data_g].dt.strftime('%d/%m/%Y')
-                st.dataframe(df_rec_view, use_container_width=True)
+                df_rec_view_display = df_rec_view.copy()
+                df_rec_view_display[c_data_g] = df_rec_view_display[c_data_g].dt.strftime('%d/%m/%Y')
+                st.dataframe(df_rec_view_display, use_container_width=True)
 
                 with st.expander("🗑️ Cancella una riga dall'archivio"):
+                    # Creiamo le opzioni partendo dal dataframe già ordinato (più recenti prima)
                     opzioni = []
-                    # Creiamo una lista per la selectbox (mostriamo le ultime 30 righe del foglio)
-                    for idx, r in df_recenti.iterrows():
+                    for idx, r in df_rec_view.iterrows():
                         d_str = r[c_data_g].strftime('%d/%m/%Y')
-                        label = f"Riga {idx+2}: {r.get('Nome','')} {r.get('Cognome','')} - {d_str}"
+                        label = f"{d_str} - {r.get('Nome','')} {r.get('Cognome','')}"
                         opzioni.append({"label": label, "index": idx+2})
                     
-                    scelta = st.selectbox("Seleziona riga da eliminare:", opzioni, format_func=lambda x: x["label"], index=None)
+                    scelta = st.selectbox(
+                        "Seleziona riga da eliminare:", 
+                        opzioni, 
+                        format_func=lambda x: x["label"], 
+                        index=None,
+                        placeholder="Seleziona un'opzione..."
+                    )
+                    
                     if st.button("Conferma Eliminazione", type="primary"):
                         if scelta:
                             client = get_gspread_client()
