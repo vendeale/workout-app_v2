@@ -10,6 +10,9 @@ import io
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Aquatime Workout Manager", page_icon="🚴‍♂️", layout="wide")
 
+# --- COSTANTI PRIVACY ---
+COLONNE_NASCOSTE = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
+
 # --- FUNZIONI DI ACCESSO AI DATI ---
 @st.cache_resource
 def get_gspread_client():
@@ -28,7 +31,7 @@ def fetch_all_data(id_foglio):
         st.error(f"Errore di connessione a Google Sheets: {e}")
         return []
 
-# --- HELPER: IDENTIFICAZIONE COLONNE DINAMICA ---
+# --- HELPER: IDENTIFICAZIONE COLONNE ---
 def get_col_name(columns, keywords, avoid=None):
     for col in columns:
         c_up = str(col).upper().strip()
@@ -38,7 +41,12 @@ def get_col_name(columns, keywords, avoid=None):
             return col
     return None
 
-# --- FUNZIONE GENERAZIONE PDF PROFESSIONALE ---
+def filtra_privacy(df):
+    """Rimuove le colonne sensibili definite in COLONNE_NASCOSTE."""
+    cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
+    return df[cols_to_keep].copy()
+
+# --- FUNZIONE GENERAZIONE PDF ---
 def generate_pdf(df_atleta, nome, cognome):
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -122,13 +130,12 @@ def generate_pdf(df_atleta, nome, cognome):
     pdf.cell(0, 10, "ANALISI GRAFICA PERFORMANCE", 0, 1, 'C')
     pdf.image(img_buf, x=10, y=35, w=190)
     plt.close(fig)
-    
     return bytes(pdf.output())
 
 # --- LOGICA APP ---
 try:
     ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4"
-    dati_per_ricerca = fetch_all_data(ID_FOGLIO)
+    dati_raw = fetch_all_data(ID_FOGLIO)
 
     st.markdown("<h2 style='text-align: center; color: #00509e;'>AQUATIME PERFORMANCE</h2>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center;'>Workout Manager</h1>", unsafe_allow_html=True)
@@ -140,10 +147,9 @@ try:
         with c_search1: s_nome = st.text_input("Nome:", key="sn")
         with c_search2: s_cognome = st.text_input("Cognome:", key="sc")
         
-        if (s_nome or s_cognome) and dati_per_ricerca:
-            df_tot = pd.DataFrame(dati_per_ricerca)
+        if (s_nome or s_cognome) and dati_raw:
+            df_tot = pd.DataFrame(dati_raw)
             df_tot.columns = [str(c).strip() for c in df_tot.columns]
-            
             mask = (df_tot['Nome'].astype(str).str.contains(s_nome.strip(), case=False, na=False)) & \
                    (df_tot['Cognome'].astype(str).str.contains(s_cognome.strip(), case=False, na=False))
             
@@ -154,16 +160,14 @@ try:
                     risultati[col_data] = pd.to_datetime(risultati[col_data], dayfirst=True, errors='coerce')
                     risultati = risultati.sort_values(col_data)
                 
-                # Visualizzazione
-                mostrare = [c for c in risultati.columns if not any(x in c.upper() for x in ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"])]
-                df_display = risultati[mostrare].copy()
-                if col_data: df_display[col_data] = df_display[col_data].dt.strftime('%d/%m/%Y')
+                # Applica filtro privacy e formatta data
+                df_display = filtra_privacy(risultati)
+                if col_data and col_data in df_display.columns:
+                    df_display[col_data] = df_display[col_data].dt.strftime('%d/%m/%Y')
                 
                 st.dataframe(df_display.iloc[::-1], use_container_width=True)
-
                 pdf_file = generate_pdf(df_display, s_nome, s_cognome)
-                st.download_button(label="📥 Scarica Report PDF", data=pdf_file, 
-                                 file_name=f"Report_{s_nome}_{s_cognome}.pdf", mime="application/pdf")
+                st.download_button("📥 Scarica Report PDF", pdf_file, f"Report_{s_nome}_{s_cognome}.pdf", "application/pdf")
             else:
                 st.warning("Nessun risultato.")
 
@@ -202,42 +206,36 @@ try:
                     st.success("Salvato!")
                     st.rerun()
 
-    # --- 3. STORICO E CANCELLAZIONE ---
+    # --- 3. STORICO E CANCELLAZIONE (CON PRIVACY) ---
     st.divider()
     st.subheader("📊 Gestione Archivio")
     
-    if dati_per_ricerca:
-        df_glob = pd.DataFrame(dati_per_ricerca)
+    if dati_raw:
+        df_glob = pd.DataFrame(dati_raw)
         df_glob.columns = [str(c).strip() for c in df_glob.columns]
         
-        # Mostra le ultime 10 sessioni a video
-        st.write("Ultime 10 sessioni inserite:")
-        st.dataframe(df_glob.tail(10).iloc[::-1], use_container_width=True)
+        st.write("Ultime 10 sessioni (Colonne sensibili nascoste):")
+        # APPLICO IL FILTRO PRIVACY ANCHE QUI
+        df_glob_privacy = filtra_privacy(df_glob)
+        st.dataframe(df_glob_privacy.tail(10).iloc[::-1], use_container_width=True)
 
-        # SEZIONE CANCELLA (Ripristinata)
         with st.expander("🗑️ **CANCELLA INSERIMENTO ERRATO**"):
             st.warning("Attenzione: l'eliminazione è irreversibile.")
-            
-            # Creiamo una lista di opzioni leggibili per la selectbox
-            # Usiamo l'indice + 2 perché Google Sheets parte da 1 e la riga 1 è l'intestazione
             opzioni_delete = []
             col_d_p = get_col_name(df_glob.columns, ["DATA"], avoid=["NASCITA"]) or "Data Pedalata"
             
-            for i, r in enumerate(dati_per_ricerca):
+            for i, r in enumerate(dati_raw):
                 label = f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')} - {r.get(col_d_p,'')}"
                 opzioni_delete.append({"label": label, "index": i + 2})
             
-            # Mostriamo le opzioni in ordine inverso (le più recenti in alto)
-            scelta = st.selectbox("Seleziona la riga da rimuovere:", 
-                                 options=opzioni_delete[::-1], 
-                                 format_func=lambda x: x["label"])
+            scelta = st.selectbox("Seleziona la riga da rimuovere:", options=opzioni_delete[::-1], format_func=lambda x: x["label"])
             
             if st.button("Conferma Eliminazione"):
                 client = get_gspread_client()
                 sheet = client.open_by_key(ID_FOGLIO).sheet1
                 sheet.delete_rows(scelta["index"])
                 st.cache_data.clear()
-                st.success(f"Riga {scelta['index']} eliminata correttamente!")
+                st.success(f"Riga {scelta['index']} eliminata!")
                 st.rerun()
 
 except Exception as e:
