@@ -154,7 +154,7 @@ try:
                 if pdf_bytes:
                     st.download_button("📥 Scarica Report PDF", pdf_bytes, f"Report_{n_input}.pdf", "application/pdf", use_container_width=True)
 
-    # 3. FORM INSERIMENTO CON OPZIONE "ALTRO"
+    # 3. FORM INSERIMENTO (LOGICA DINAMICA SOTTO I BOX)
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -164,20 +164,34 @@ try:
             cognome = f2.text_input("Cognome *", value="")
             sede = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Seleziona sede...")
             
-            f4, f5, f6, f7 = st.columns(4)
-            data_s = f4.date_input("Data *", value=None, format="DD/MM/YYYY")
+            st.write("---")
             
-            # SESSIONE
-            durata_sel = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
-            durata_altro = f5.text_input("Specifica Sessione", placeholder="es. 60 min") if durata_sel == "Altro..." else ""
+            # Riga superiore per i menu a tendina
+            c_data, c_sess, c_prog, c_liv = st.columns(4)
             
-            # PROGRAMMA
-            prog_sel = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."], index=None, placeholder="Scegli...")
-            prog_altro = f6.text_input("Specifica Programma") if prog_sel == "Altro..." else ""
+            data_s = c_data.date_input("Data *", value=None, format="DD/MM/YYYY")
             
-            # LIVELLO
-            liv_sel = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var", "Altro..."], index=None, placeholder="Scegli...")
-            liv_altro = f7.text_input("Specifica Livello") if liv_sel == "Altro..." else ""
+            durata_sel = c_sess.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
+            prog_sel = c_prog.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."], index=None, placeholder="Scegli...")
+            liv_sel = c_liv.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var", "Altro..."], index=None, placeholder="Scegli...")
+
+            # Riga inferiore (opzionale) per i campi "Altro" posizionati sotto i rispettivi box
+            # Creiamo una riga di colonne identica a quella sopra per l'allineamento
+            _, c_sess_input, c_prog_input, c_liv_input = st.columns(4)
+            
+            durata_altro = ""
+            if durata_sel == "Altro...":
+                durata_altro = c_sess_input.text_input("Nuova Sessione", placeholder="es. 60 min")
+                
+            prog_altro = ""
+            if prog_sel == "Altro...":
+                prog_altro = c_prog_input.text_input("Nuovo Programma", placeholder="es. Cardio")
+                
+            liv_altro = ""
+            if liv_sel == "Altro...":
+                liv_altro = c_liv_input.text_input("Nuovo Livello", placeholder="es. 4-res")
+
+            st.write("---")
             
             f8, f9, f10 = st.columns(3)
             vel = f8.number_input("Km/h *", min_value=0.0, step=0.1, value=0.0)
@@ -185,7 +199,6 @@ try:
             cal = f10.number_input("Calorie *", min_value=0, value=0)
 
             if st.form_submit_button("Salva sessione"):
-                # Gestione valori "Altro"
                 final_durata = durata_altro if durata_sel == "Altro..." else durata_sel
                 final_prog = prog_altro if prog_sel == "Altro..." else prog_sel
                 final_liv = liv_altro if liv_sel == "Altro..." else liv_sel
@@ -199,7 +212,7 @@ try:
                     st.success("Dati inviati correttamente!")
                     st.rerun()
                 else:
-                    st.error("Errore: Compila tutti i campi obbligatori. Se hai selezionato 'Altro...', scrivi il valore nella casella che è apparsa.")
+                    st.error("Errore: Compila tutti i campi obbligatori. Se hai scelto 'Altro...', scrivi il valore nel box sottostante.")
 
     # 4. STORICO 30 GIORNI E CANCELLAZIONE
     st.divider()
