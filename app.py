@@ -42,22 +42,27 @@ def get_col_name(columns, keywords, avoid=None):
     return None
 
 def filtra_privacy(df):
-    """Rimuove le colonne sensibili definite in COLONNE_NASCOSTE."""
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].copy()
 
-# --- FUNZIONE GENERAZIONE PDF ---
+# --- FUNZIONE GENERAZIONE PDF (SOLO TABELLA E STATISTICHE) ---
 def generate_pdf(df_atleta, nome, cognome):
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
+    # Identificazione colonne
     c_data = get_col_name(df_atleta.columns, ["DATA"], avoid=["NASCITA"])
     c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI"])
     c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA"])
     c_cal = get_col_name(df_atleta.columns, ["CALORIE", "KCAL"])
     c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"])
     c_liv = get_col_name(df_atleta.columns, ["LIVELLO"])
+
+    # Calcolo medie e totali per il riepilogo
+    km_tot = pd.to_numeric(df_atleta[c_km], errors='coerce').sum() if c_km else 0
+    kmh_avg = pd.to_numeric(df_atleta[c_kmh], errors='coerce').mean() if c_kmh else 0
+    cal_avg = pd.to_numeric(df_atleta[c_cal], errors='coerce').mean() if c_cal else 0
 
     # Header Blu
     pdf.set_fill_color(0, 80, 158)
@@ -71,65 +76,43 @@ def generate_pdf(df_atleta, nome, cognome):
     
     pdf.set_y(45)
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(0, 10, "RIEPILOGO SESSIONI RECENTI", 0, 1, 'L')
     
-    # Tabella
+    # --- SEZIONE RIEPILOGO STATISTICO ---
+    pdf.set_font("Arial", 'B', 12)
+    pdf.set_fill_color(245, 245, 245)
+    pdf.cell(0, 10, "STATISTICHE GENERALI DEL PERIODO", 0, 1, 'L')
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(63, 10, f"Km Totali: {km_tot:.1f}", 1, 0, 'C', True)
+    pdf.cell(63, 10, f"Media Km/h: {kmh_avg:.1f}", 1, 0, 'C', True)
+    pdf.cell(64, 10, f"Media Calorie: {cal_avg:.0f}", 1, 1, 'C', True)
+    pdf.ln(5)
+
+    # --- TABELLA DETTAGLIATA ---
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(0, 10, "DETTAGLIO SESSIONI", 0, 1, 'L')
+    
     pdf.set_font("Arial", 'B', 9)
-    pdf.set_fill_color(230, 230, 230)
+    pdf.set_fill_color(0, 80, 158)
+    pdf.set_text_color(255, 255, 255)
     w = [25, 45, 40, 20, 20, 25]
     headers = ["Data", "Programma", "Livello", "Km", "Km/h", "Calorie"]
     for i in range(len(headers)):
         pdf.cell(w[i], 8, headers[i], 1, 0, 'C', True)
     pdf.ln()
 
+    pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", '', 8)
+    fill = False
     for _, row in df_atleta.iterrows():
-        pdf.cell(w[0], 7, str(row.get(c_data, '')), 1, 0, 'C')
-        pdf.cell(w[1], 7, str(row.get(c_prog, ''))[:22], 1, 0, 'L')
-        pdf.cell(w[2], 7, str(row.get(c_liv, ''))[:20], 1, 0, 'L')
-        pdf.cell(w[3], 7, str(row.get(c_km, '0')), 1, 0, 'C')
-        pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C')
-        pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C')
+        pdf.set_fill_color(245, 245, 245) if fill else pdf.set_fill_color(255, 255, 255)
+        pdf.cell(w[0], 7, str(row.get(c_data, '')), 1, 0, 'C', fill)
+        pdf.cell(w[1], 7, str(row.get(c_prog, ''))[:22], 1, 0, 'L', fill)
+        pdf.cell(w[2], 7, str(row.get(c_liv, ''))[:20], 1, 0, 'L', fill)
+        pdf.cell(w[3], 7, str(row.get(c_km, '0')), 1, 0, 'C', fill)
+        pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C', fill)
+        pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C', fill)
+        fill = not fill
 
-    # Grafici
-    plt.style.use('ggplot')
-    df_plot = df_atleta.copy()
-    for c in [c_km, c_kmh, c_cal]:
-        if c: df_plot[c] = pd.to_numeric(df_plot[c], errors='coerce').fillna(0)
-
-    fig, axs = plt.subplots(2, 2, figsize=(10, 8))
-    plt.subplots_adjust(hspace=0.4, wspace=0.3)
-
-    if c_km:
-        axs[0, 0].plot(df_plot[c_data], df_plot[c_km], color='#00509E', marker='o')
-        axs[0, 0].set_title('Km Percorsi', fontsize=10, fontweight='bold')
-        axs[0, 0].tick_params(axis='x', rotation=45, labelsize=7)
-
-    if c_kmh:
-        axs[0, 1].bar(df_plot[c_data], df_plot[c_kmh], color='#FF8C00', alpha=0.7)
-        axs[0, 1].set_title('Km/h Medi', fontsize=10, fontweight='bold')
-        axs[0, 1].tick_params(axis='x', rotation=45, labelsize=7)
-
-    if c_cal:
-        axs[1, 0].fill_between(range(len(df_plot)), df_plot[c_cal], color='#2ECC71', alpha=0.3)
-        axs[1, 0].set_title('Consumo Calorie', fontsize=10, fontweight='bold')
-
-    axs[1, 1].axis('off')
-    km_tot = df_plot[c_km].sum() if c_km else 0
-    kmh_avg = df_plot[c_kmh].mean() if c_kmh else 0
-    cal_avg = df_plot[c_cal].mean() if c_cal else 0
-    res_text = f"STATISTICHE\n\nKm Totali: {km_tot:.1f}\nMedia Km/h: {kmh_avg:.1f}\nMedia Calorie: {cal_avg:.0f}"
-    axs[1, 1].text(0.1, 0.5, res_text, fontsize=12, fontweight='bold', color='#1B4F72')
-
-    img_buf = io.BytesIO()
-    plt.savefig(img_buf, format='png', dpi=150, bbox_inches='tight')
-    pdf.add_page()
-    pdf.set_y(20)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "ANALISI GRAFICA PERFORMANCE", 0, 1, 'C')
-    pdf.image(img_buf, x=10, y=35, w=190)
-    plt.close(fig)
     return bytes(pdf.output())
 
 # --- LOGICA APP ---
@@ -160,14 +143,13 @@ try:
                     risultati[col_data] = pd.to_datetime(risultati[col_data], dayfirst=True, errors='coerce')
                     risultati = risultati.sort_values(col_data)
                 
-                # Applica filtro privacy e formatta data
                 df_display = filtra_privacy(risultati)
                 if col_data and col_data in df_display.columns:
                     df_display[col_data] = df_display[col_data].dt.strftime('%d/%m/%Y')
                 
                 st.dataframe(df_display.iloc[::-1], use_container_width=True)
                 pdf_file = generate_pdf(df_display, s_nome, s_cognome)
-                st.download_button("📥 Scarica Report PDF", pdf_file, f"Report_{s_nome}_{s_cognome}.pdf", "application/pdf")
+                st.download_button("📥 Scarica Report PDF (Tabellare)", pdf_file, f"Report_{s_nome}_{s_cognome}.pdf", "application/pdf")
             else:
                 st.warning("Nessun risultato.")
 
@@ -206,7 +188,7 @@ try:
                     st.success("Salvato!")
                     st.rerun()
 
-    # --- 3. STORICO E CANCELLAZIONE (CON PRIVACY) ---
+    # --- 3. STORICO E CANCELLAZIONE ---
     st.divider()
     st.subheader("📊 Gestione Archivio")
     
@@ -215,7 +197,6 @@ try:
         df_glob.columns = [str(c).strip() for c in df_glob.columns]
         
         st.write("Ultime 10 sessioni (Colonne sensibili nascoste):")
-        # APPLICO IL FILTRO PRIVACY ANCHE QUI
         df_glob_privacy = filtra_privacy(df_glob)
         st.dataframe(df_glob_privacy.tail(10).iloc[::-1], use_container_width=True)
 
@@ -223,13 +204,11 @@ try:
             st.warning("Attenzione: l'eliminazione è irreversibile.")
             opzioni_delete = []
             col_d_p = get_col_name(df_glob.columns, ["DATA"], avoid=["NASCITA"]) or "Data Pedalata"
-            
             for i, r in enumerate(dati_raw):
                 label = f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')} - {r.get(col_d_p,'')}"
                 opzioni_delete.append({"label": label, "index": i + 2})
             
             scelta = st.selectbox("Seleziona la riga da rimuovere:", options=opzioni_delete[::-1], format_func=lambda x: x["label"])
-            
             if st.button("Conferma Eliminazione"):
                 client = get_gspread_client()
                 sheet = client.open_by_key(ID_FOGLIO).sheet1
