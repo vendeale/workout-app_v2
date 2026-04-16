@@ -27,7 +27,6 @@ def fetch_all_data(id_foglio):
         spreadsheet = client.open_by_key(id_foglio)
         sheet = spreadsheet.sheet1
         data = sheet.get_all_records()
-        # Filtro righe vuote
         return [r for r in data if r.get('Nome') and str(r.get('Nome')).strip() != ""]
     except Exception as e:
         return []
@@ -157,7 +156,7 @@ try:
                     n_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
                     st.download_button("📥 Scarica Report PDF", pdf_file, n_file, "application/pdf")
 
-    # --- 2. FORM INSERIMENTO ---
+    # --- 2. FORM INSERIMENTO (AGGIORNATO SENZA DEFAULT) ---
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -165,21 +164,26 @@ try:
             f1, f2, f3 = st.columns(3)
             n_ins = f1.text_input("Nome *")
             c_ins = f2.text_input("Cognome *")
-            s_ins = f3.selectbox("Sede *", ["", "Prati", "Corso Trieste"])
+            s_ins = st.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Seleziona Sede...")
+            
             st.divider()
             f4, f5, f6, f7 = st.columns(4)
-            d_ins = f4.date_input("Data *")
-            sess_sel = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."])
-            prog_sel = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"])
-            liv_sel = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"])
+            # Data senza default (None) e formato GG/MM/AAAA
+            d_ins = f4.date_input("Data *", value=None, format="DD/MM/YYYY", placeholder="Scegli data")
+            
+            # Selectbox senza default (index=None)
+            sess_sel = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
+            prog_sel = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"], index=None, placeholder="Scegli...")
+            liv_sel = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"], index=None, placeholder="Scegli...")
+            
             st.divider()
             f8, f9, f10 = st.columns(3)
-            v_ins = f8.number_input("Km/h *", min_value=0.0, step=0.1)
-            k_ins = f9.number_input("Km totali *", min_value=0.0, step=0.1)
-            cl_ins = f10.number_input("Calorie *", min_value=0)
+            v_ins = f8.number_input("Km/h *", min_value=0.0, step=0.1, value=0.0)
+            k_ins = f9.number_input("Km totali *", min_value=0.0, step=0.1, value=0.0)
+            cl_ins = f10.number_input("Calorie *", min_value=0, value=0)
 
             if st.form_submit_button("🚀 Salva"):
-                if n_ins and c_ins and s_ins:
+                if n_ins and c_ins and s_ins and d_ins and sess_sel and prog_sel and liv_sel:
                     client = get_gspread_client()
                     sheet = client.open_by_key(ID_FOGLIO).sheet1
                     riga = [f"{n_ins} {c_ins}", n_ins, c_ins, 0, "", d_ins.strftime("%d/%m/%Y"), sess_sel, prog_sel, liv_sel, v_ins, k_ins, cl_ins, s_ins, 0, 0, 0]
@@ -187,6 +191,8 @@ try:
                     st.cache_data.clear()
                     st.success("Dati salvati!")
                     st.rerun()
+                else:
+                    st.error("Compila tutti i campi contrassegnati con *")
 
     # --- 3. ARCHIVIO E CANCELLAZIONE ---
     st.divider()
@@ -196,22 +202,21 @@ try:
         st.dataframe(df_glob.tail(15).iloc[::-1], use_container_width=True)
 
         with st.expander("🗑️ Cancella riga"):
-            # Individuiamo la colonna della data per la label
             col_data_label = get_col_name(df_glob.columns, ["DATA"], avoid=["NASCITA"])
-            
             opzioni = []
             for i, r in enumerate(dati_raw):
-                # Creiamo una label parlante: Riga, Nome, Cognome e Data
                 data_str = r.get(col_data_label, "N/D")
                 label = f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')} - Data: {data_str}"
                 opzioni.append({"label": label, "idx": i+2})
             
-            sel = st.selectbox("Seleziona la sessione da eliminare:", opzioni[::-1], format_func=lambda x: x["label"])
-            if st.button("Conferma Eliminazione Permanente"):
-                get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
-                st.cache_data.clear()
-                st.success("Riga eliminata!")
-                st.rerun()
+            sel = st.selectbox("Seleziona sessione:", opzioni[::-1], format_func=lambda x: x["label"], index=None, placeholder="Scegli riga...")
+            if st.button("Elimina"):
+                if sel:
+                    get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.warning("Seleziona una riga prima di eliminare.")
 
 except Exception as e:
     st.error(f"Errore: {e}")
