@@ -112,7 +112,6 @@ try:
                     st.error("⚠️ Compila i campi obbligatori!")
                 else:
                     nome_completo = f"{nome} {cognome}".strip()
-                    # Invio dati al foglio (mantenendo la struttura delle colonne originale)
                     row = [
                         nome_completo, nome, cognome, 0, "", 
                         data_pedalata.strftime("%d/%m/%Y"), sess_f, prog_f, 
@@ -136,7 +135,6 @@ try:
             limite = datetime.now() - timedelta(days=30)
             df_f = df_g[df_g['Data_dt'] >= limite].copy()
             
-            # FILTRO COLONNE TOTALE: Nasconde Frequenza Cardiaca, Nascita e Data_dt
             parole_chiave_da_escludere = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
             mostrare = [c for c in df_f.columns if not any(word in c.upper() for word in parole_chiave_da_escludere)]
             
@@ -145,17 +143,26 @@ try:
             else:
                 st.info("Nessuna sessione negli ultimi 30 giorni.")
         except:
-            # Fallback se il filtro data fallisce
             mostrare = [c for c in df_g.columns if not any(word in c.upper() for word in ["FREQUENZA", "CARDIACA", "FC", "NASCITA"])]
             st.dataframe(df_g[mostrare].iloc[::-1], use_container_width=True)
 
+        # --- CANCELLA INSERIMENTO ERRATO (ORDINATO DAL PIÙ NUOVO) ---
         with st.expander("🗑️ Cancella inserimento errato"):
+            # Creiamo la lista delle opzioni associando l'indice reale del foglio (i+2)
             opzioni = [{"label": f"{r.get('Nome', '')} {r.get('Cognome', '')} - {r.get('Data Pedalata', '')}", "idx": i+2} for i, r in enumerate(dati_per_ricerca)]
+            
             if opzioni:
-                sel = st.selectbox("Seleziona riga:", opzioni, format_func=lambda x: x["label"])
+                # Invertiamo l'ordine della lista per mostrare i più recenti in alto
+                opzioni_invertite = opzioni[::-1]
+                
+                sel = st.selectbox("Seleziona riga da eliminare (più recenti in alto):", 
+                                   opzioni_invertite, 
+                                   format_func=lambda x: x["label"])
+                
                 if st.button("Elimina definitivamente"):
                     sheet.delete_rows(sel["idx"])
                     st.cache_data.clear()
+                    st.success("Sessione eliminata correttamente!")
                     st.rerun()
     else:
         st.info("Nessun dato presente.")
