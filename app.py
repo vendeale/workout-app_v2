@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
-from fpdf import FPDF
+from fpdf import FPDF  # fpdf2 si importa comunque come FPDF
 import io
 import os
 
@@ -50,13 +50,14 @@ def get_col_name(columns, keywords, avoid=None):
             return col
     return None
 
-# --- GENERAZIONE PDF ---
+# --- GENERAZIONE PDF (AGGIORNATA PER FPDF2) ---
 def generate_pdf(df_atleta, nome_atleta):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         
+        # Carichiamo i nomi delle colonne
         cols = df_atleta.columns.tolist()
         c_data = get_col_name(cols, ["DATA"], avoid=["NASCITA"])
         c_km = get_col_name(cols, ["KM TOTALI", "KM PERCORSI"]) or "KM"
@@ -65,6 +66,7 @@ def generate_pdf(df_atleta, nome_atleta):
         c_prog = get_col_name(cols, ["PROGRAMMA"])
         c_liv = get_col_name(cols, ["LIVELLO"])
 
+        # Calcoli statistiche
         km_tot = df_atleta[c_km].apply(force_numeric).sum()
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean()
         cal_avg = df_atleta[c_cal].apply(force_numeric).mean()
@@ -73,16 +75,16 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 40, 'F')
         pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", 'B', 20)
+        pdf.set_font("helvetica", 'B', 20) # fpdf2 usa helvetica come standard
         pdf.set_y(12)
-        pdf.cell(0, 10, "AQUATIME PERFORMANCE", 0, 1, 'C')
-        pdf.set_font("Arial", '', 12)
-        pdf.cell(0, 10, f"REPORT PERFORMANCE: {nome_atleta.upper()}", 0, 1, 'C')
+        pdf.cell(0, 10, "AQUATIME PERFORMANCE", align='C', new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", '', 12)
+        pdf.cell(0, 10, f"REPORT PERFORMANCE: {nome_atleta.upper()}", align='C', new_x="LMARGIN", new_y="NEXT")
         
         # Riepilogo Statistiche
         pdf.set_y(45)
         pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Arial", 'B', 11)
+        pdf.set_font("helvetica", 'B', 11)
         pdf.set_fill_color(235, 235, 235)
         pdf.cell(63, 10, f"KM TOTALI: {km_tot:.2f}", 1, 0, 'C', True)
         pdf.cell(63, 10, f"KM/H MEDI: {kmh_avg:.1f}", 1, 0, 'C', True)
@@ -90,7 +92,7 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.ln(5)
 
         # Tabella Dati
-        pdf.set_font("Arial", 'B', 9)
+        pdf.set_font("helvetica", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
         w = [25, 45, 40, 20, 20, 25]
@@ -100,7 +102,7 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.ln()
 
         pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Arial", '', 8)
+        pdf.set_font("helvetica", '', 8)
         for _, row in df_atleta.iterrows():
             pdf.cell(w[0], 7, str(row.get(c_data, '')), 1, 0, 'C')
             pdf.cell(w[1], 7, str(row.get(c_prog, ''))[:22], 1, 0, 'L')
@@ -109,8 +111,10 @@ def generate_pdf(df_atleta, nome_atleta):
             pdf.cell(w[4], 7, str(row.get(c_kmh, '0')), 1, 0, 'C')
             pdf.cell(w[5], 7, str(row.get(c_cal, '0')), 1, 1, 'C')
 
-        return pdf.output(dest='S').encode('latin-1')
-    except:
+        # Restituiamo i byte del PDF
+        return pdf.output()
+    except Exception as e:
+        st.error(f"Errore generazione PDF: {e}")
         return None
 
 # --- LOGICA APP ---
@@ -126,7 +130,7 @@ try:
 
     # 2. SEZIONE RICERCA E REPORT PDF
     st.divider()
-    with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=False):
+    with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=True):
         col1, col2 = st.columns(2)
         n_input = col1.text_input("Filtra Nome", key="src_n")
         c_input = col2.text_input("Filtra Cognome", key="src_c")
@@ -135,8 +139,8 @@ try:
             df_full = pd.DataFrame(dati_raw)
             df_full.columns = [str(c).strip() for c in df_full.columns]
             
-            res = df_full[(df_full['Nome'].str.contains(n_input, case=False, na=False)) & 
-                          (df_full['Cognome'].str.contains(c_input, case=False, na=False))].copy()
+            res = df_full[(df_full['Nome'].astype(str).str.contains(n_input, case=False, na=False)) & 
+                          (df_full['Cognome'].astype(str).str.contains(c_input, case=False, na=False))].copy()
             
             if not res.empty:
                 c_data = get_col_name(res.columns, ["DATA"], avoid=["NASCITA"])
@@ -151,18 +155,19 @@ try:
                 
                 st.dataframe(df_display_search, use_container_width=True)
 
-                pdf_bytes = generate_pdf(df_view, f"{n_input} {c_input}")
-                if pdf_bytes:
+                # --- PULSANTE REPORT PDF ---
+                pdf_output = generate_pdf(df_view, f"{n_input} {c_input}")
+                if pdf_output:
                     st.download_button(
-                        label="📥 Genera e Scarica Report PDF",
-                        data=pdf_bytes,
-                        file_name=f"Report_{n_input}.pdf",
+                        label="📥 Scarica Report PDF",
+                        data=pdf_output,
+                        file_name=f"Report_{n_input}_{c_input}.pdf",
                         mime="application/pdf",
                         key="dl_report",
                         use_container_width=True
                     )
             else:
-                st.warning("Nessun risultato trovato.")
+                st.warning("Nessun risultato trovato per questo nome/cognome.")
 
     # 3. SEZIONE NUOVA SESSIONE
     st.divider()
@@ -187,7 +192,6 @@ try:
         if prog_sel == "Altro...":
             final_prog = c_prog.text_input("Specifica Programma", key="alt_pro")
             
-        # MODIFICA OPZIONI LIVELLO RICHIESTE
         opzioni_livello = [
             "1-resistenza", "2-resistenza", "3-resistenza", 
             "1-variabile", "2-variabile", "3-variabile", 
@@ -219,7 +223,7 @@ try:
                     st.success("Sessione Salvata!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Errore: {e}")
+                    st.error(f"Errore durante il salvataggio: {e}")
             else:
                 st.error("Compila tutti i campi obbligatori (*)")
 
