@@ -45,7 +45,7 @@ def filtra_privacy(df):
     cols_to_keep = [c for c in df.columns if not any(x in str(c).upper() for x in COLONNE_NASCOSTE)]
     return df[cols_to_keep].dropna(how='all').copy()
 
-# --- GENERAZIONE PDF ---
+# --- GENERAZIONE PDF AGGIORNATA (FIX KM) ---
 def generate_pdf(df_atleta, nome, cognome):
     try:
         pdf = FPDF(orientation='P', unit='mm', format='A4')
@@ -53,20 +53,30 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.add_page()
         
         c_data = get_col_name(df_atleta.columns, ["DATA"], avoid=["NASCITA"])
-        c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI"])
+        c_km = get_col_name(df_atleta.columns, ["KM TOTALI", "KM PERCORSI", "KM"])
         c_kmh = get_col_name(df_atleta.columns, ["KM/H", "VELOCITA"])
         c_cal = get_col_name(df_atleta.columns, ["CALORIE", "KCAL"])
         c_prog = get_col_name(df_atleta.columns, ["PROGRAMMA"])
         c_liv = get_col_name(df_atleta.columns, ["LIVELLO"])
 
-        def safe_num(val):
-            try: return float(str(val).replace(',', '.'))
-            except: return 0.0
+        # Funzione di pulizia numerica robusta per gestire virgole e stringhe sporche
+        def force_numeric(val):
+            if val is None or val == "": return 0.0
+            try:
+                # Trasforma "10,5" in "10.5" e rimuove spazi
+                s = str(val).replace(',', '.').strip()
+                return float(s)
+            except:
+                return 0.0
 
-        km_tot = sum(safe_num(x) for x in df_atleta[c_km]) if c_km else 0
-        kmh_avg = pd.to_numeric(df_atleta[c_kmh], errors='coerce').mean() if c_kmh else 0
-        cal_avg = pd.to_numeric(df_atleta[c_cal], errors='coerce').mean() if c_cal else 0
+        # Calcoli Statistici
+        km_vals = df_atleta[c_km].apply(force_numeric) if c_km else pd.Series([0.0])
+        km_tot = km_vals.sum()
+        
+        kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
+        cal_avg = df_atleta[c_cal].apply(force_numeric).mean() if c_cal else 0.0
 
+        # Header e Fuso Orario Roma
         tz_roma = pytz.timezone('Europe/Rome')
         data_ora_roma = datetime.now(tz_roma).strftime("%d/%m/%Y %H:%M:%S")
 
@@ -87,11 +97,12 @@ def generate_pdf(df_atleta, nome, cognome):
         pdf.set_fill_color(245, 245, 245)
         pdf.cell(0, 10, "RIEPILOGO GENERALE", 0, 1, 'L')
         pdf.set_font("Arial", '', 10)
-        pdf.cell(63, 10, f"Km Totali: {km_tot:.1f}", 1, 0, 'C', True)
+        pdf.cell(63, 10, f"Km Totali: {km_tot:.2f}", 1, 0, 'C', True)
         pdf.cell(63, 10, f"Media Km/h: {kmh_avg:.1f}", 1, 0, 'C', True)
         pdf.cell(64, 10, f"Media Calorie: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
+        # Tabella sessioni
         pdf.set_font("Arial", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -156,7 +167,7 @@ try:
                     n_file = f"Report_{nome_reale}_{cognome_reale}.pdf".replace(" ", "_")
                     st.download_button("📥 Scarica Report PDF", pdf_file, n_file, "application/pdf")
 
-    # --- 2. FORM INSERIMENTO (FIXED) ---
+    # --- 2. FORM INSERIMENTO (NESSUN DEFAULT) ---
     st.divider()
     with st.container(border=True):
         st.subheader("📝 Nuova Sessione")
@@ -168,9 +179,7 @@ try:
             
             st.divider()
             f4, f5, f6, f7 = st.columns(4)
-            # FIX: rimosso placeholder (non supportato) e inserito value=None
             d_ins = f4.date_input("Data *", value=None, format="DD/MM/YYYY")
-            
             sess_sel = f5.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
             prog_sel = f6.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale"], index=None, placeholder="Scegli...")
             liv_sel = f7.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var"], index=None, placeholder="Scegli...")
@@ -181,10 +190,7 @@ try:
             k_ins = f9.number_input("Km totali *", min_value=0.0, step=0.1, value=0.0)
             cl_ins = f10.number_input("Calorie *", min_value=0, value=0)
 
-            # Il tasto deve stare QUI dentro
-            submit = st.form_submit_button("🚀 Salva Sessione")
-            
-            if submit:
+            if st.form_submit_button("🚀 Salva Sessione"):
                 if n_ins and c_ins and s_ins and d_ins and sess_sel and prog_sel and liv_sel:
                     client = get_gspread_client()
                     sheet = client.open_by_key(ID_FOGLIO).sheet1
@@ -211,14 +217,12 @@ try:
                 label = f"Riga {i+2}: {r.get('Nome','')} {r.get('Cognome','')} - Data: {data_str}"
                 opzioni.append({"label": label, "idx": i+2})
             
-            sel = st.selectbox("Seleziona sessione da eliminare:", opzioni[::-1], format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
+            sel = st.selectbox("Seleziona sessione:", opzioni[::-1], format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
             if st.button("Conferma Eliminazione"):
                 if sel:
                     get_gspread_client().open_by_key(ID_FOGLIO).sheet1.delete_rows(sel["idx"])
                     st.cache_data.clear()
                     st.rerun()
-                else:
-                    st.warning("Seleziona una riga.")
 
 except Exception as e:
     st.error(f"Errore: {e}")
