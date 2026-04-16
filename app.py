@@ -29,6 +29,7 @@ def fetch_all_data(id_foglio):
         data = sheet.get_all_records()
         cleaned_data = []
         for r in data:
+            # Pulizia chiavi e valori per evitare errori di spazi bianchi
             new_r = {str(k).strip(): v for k, v in r.items()}
             if new_r.get('Nome') and str(new_r.get('Nome')).strip() != "":
                 cleaned_data.append(new_r)
@@ -201,7 +202,7 @@ try:
                 st.rerun()
             else: st.error("Compila i campi obbligatori (*)")
 
-    # 4. ARCHIVIO E CANCELLAZIONE (LOGICA CORRETTA)
+    # 4. ARCHIVIO E CANCELLAZIONE (LOGICA MIGLIORATA)
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
@@ -222,11 +223,10 @@ try:
                     opzioni_cancella = []
                     for idx, r in df_recenti.iterrows():
                         label = f"{r[c_data_g].strftime('%d/%m/%Y')} - {r['Nome']} {r['Cognome']}"
-                        # Salviamo i valori per identificare la riga in modo univoco
                         opzioni_cancella.append({
                             "label": label, 
-                            "nome": r['Nome'], 
-                            "cognome": r['Cognome'], 
+                            "nome": str(r['Nome']).strip(), 
+                            "cognome": str(r['Cognome']).strip(), 
                             "data": r[c_data_g].strftime('%d/%m/%Y')
                         })
                     
@@ -237,27 +237,32 @@ try:
                             client = get_gspread_client()
                             sheet = client.open_by_key(ID_FOGLIO).sheet1
                             
-                            # CERCHIAMO LA RIGA NEL FOGLIO (evitando errori di indice)
-                            all_rows = sheet.get_all_records()
+                            # Fetching di nuovo i dati freschi per trovare la riga corretta
+                            records = sheet.get_all_records()
                             row_to_del = -1
                             
-                            for i, row in enumerate(all_rows):
-                                if (str(row.get('Nome')).strip() == str(scelta['nome']).strip() and 
-                                    str(row.get('Cognome')).strip() == str(scelta['cognome']).strip() and 
-                                    str(row.get('DATA')).strip() == str(scelta['data']).strip()):
-                                    # +2 perché: header è riga 1, gli indici di enumerate partono da 0
-                                    row_to_del = i + 2
+                            for i, row in enumerate(records):
+                                # Pulizia nomi colonne del foglio per il confronto
+                                clean_row = {str(k).strip().upper(): str(v).strip() for k, v in row.items()}
+                                
+                                # Trova il nome della colonna data nel foglio corrente
+                                sheet_data_col = next((k for k in clean_row.keys() if "DATA" in k and "NASCITA" not in k), None)
+                                
+                                if (clean_row.get('NOME') == scelta['nome'].upper() and 
+                                    clean_row.get('COGNOME') == scelta['cognome'].upper() and 
+                                    (sheet_data_col and clean_row.get(sheet_data_col) == scelta['data'])):
+                                    row_to_del = i + 2 # +2 per header e index 1-based
                                     break
                             
                             if row_to_del != -1:
                                 sheet.delete_rows(row_to_del)
                                 st.cache_data.clear()
-                                st.success(f"Sessione di {scelta['label']} eliminata!")
+                                st.success(f"Sessione eliminata!")
                                 st.rerun()
                             else:
-                                st.error("Impossibile trovare la riga nel foglio Google.")
+                                st.error("Impossibile trovare la riga corrispondente nel foglio. Verifica che i nomi delle colonne 'Nome', 'Cognome' e 'DATA' siano corretti.")
                         else:
                             st.warning("Seleziona prima una riga.")
 
 except Exception as e:
-    st.error(f"Errore: {e}")
+    st.error(f"Errore generale: {e}")
