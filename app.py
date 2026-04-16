@@ -69,7 +69,7 @@ def generate_pdf(df_atleta, nome_atleta):
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean()
         cal_avg = df_atleta[c_cal].apply(force_numeric).mean()
 
-        # Header
+        # Header Blu
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 40, 'F')
         pdf.set_text_color(255, 255, 255)
@@ -79,7 +79,7 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.set_font("Arial", '', 12)
         pdf.cell(0, 10, f"REPORT PERFORMANCE: {nome_atleta.upper()}", 0, 1, 'C')
         
-        # Riepilogo
+        # Riepilogo Statistiche
         pdf.set_y(45)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", 'B', 11)
@@ -89,7 +89,7 @@ def generate_pdf(df_atleta, nome_atleta):
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}", 1, 1, 'C', True)
         pdf.ln(5)
 
-        # Tabella
+        # Tabella Dati
         pdf.set_font("Arial", 'B', 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -124,16 +124,17 @@ try:
         if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
         else: st.title("AQUATIME")
 
-    # 2. RICERCA E REPORT PDF
+    # 2. SEZIONE RICERCA E REPORT PDF
     st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=False):
         col1, col2 = st.columns(2)
-        n_input = col1.text_input("Filtra Nome")
-        c_input = col2.text_input("Filtra Cognome")
+        n_input = col1.text_input("Filtra Nome", key="src_n")
+        c_input = col2.text_input("Filtra Cognome", key="src_c")
         
         if (n_input or c_input) and dati_raw:
             df_full = pd.DataFrame(dati_raw)
             df_full.columns = [str(c).strip() for c in df_full.columns]
+            
             res = df_full[(df_full['Nome'].str.contains(n_input, case=False, na=False)) & 
                           (df_full['Cognome'].str.contains(c_input, case=False, na=False))].copy()
             
@@ -144,67 +145,83 @@ try:
                     res = res.sort_values(c_data, ascending=False)
                 
                 df_view = filtra_privacy(res)
-                pdf_bytes = generate_pdf(df_view, f"{n_input} {c_input}")
-                
+                df_display_search = df_view.copy()
                 if c_data:
-                    df_view[c_data] = df_view[c_data].dt.strftime('%d/%m/%Y')
+                    df_display_search[c_data] = df_display_search[c_data].dt.strftime('%d/%m/%Y')
                 
-                st.dataframe(df_view, use_container_width=True)
-                if pdf_bytes:
-                    st.download_button("📥 Scarica Report PDF", pdf_bytes, f"Report_{n_input}.pdf", "application/pdf")
+                st.dataframe(df_display_search, use_container_width=True)
 
-    # 3. NUOVA SESSIONE (LOGICA DINAMICA)
+                # Generazione PDF e Pulsante Download
+                pdf_bytes = generate_pdf(df_view, f"{n_input} {c_input}")
+                if pdf_bytes:
+                    st.download_button(
+                        label="📥 Genera e Scarica Report PDF",
+                        data=pdf_bytes,
+                        file_name=f"Report_{n_input}.pdf",
+                        mime="application/pdf",
+                        key="dl_report",
+                        use_container_width=True
+                    )
+            else:
+                st.warning("Nessun risultato trovato.")
+
+    # 3. SEZIONE NUOVA SESSIONE (Logica Dinamica Fuori dal Form)
     st.divider()
     st.subheader("📝 Nuova Sessione")
     with st.container(border=True):
         f1, f2, f3 = st.columns(3)
-        nome_ins = f1.text_input("Nome *", key="ins_nome")
-        cognome_ins = f2.text_input("Cognome *", key="ins_cogn")
-        sede_ins = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Scegli sede...")
+        nome_ins = f1.text_input("Nome *", key="ins_n")
+        cognome_ins = f2.text_input("Cognome *", key="ins_c")
+        sede_ins = f3.selectbox("Sede *", ["Prati", "Corso Trieste"], index=None, placeholder="Seleziona sede...")
         
         st.write("---")
         c_data, c_sess, c_prog, c_liv = st.columns(4)
         data_s = c_data.date_input("Data *", value=None, format="DD/MM/YYYY")
         
+        # BOX DINAMICI
         durata_sel = c_sess.selectbox("Sessione *", ["30 min", "45 min", "Altro..."], index=None, placeholder="Scegli...")
         final_durata = durata_sel
         if durata_sel == "Altro...":
-            final_durata = c_sess.text_input("Specifica Sessione")
+            final_durata = c_sess.text_input("Specifica Sessione", key="alt_dur")
             
         prog_sel = c_prog.selectbox("Programma *", ["Forma", "Expert", "Sportivo", "Salute", "Manuale", "Altro..."], index=None, placeholder="Scegli...")
         final_prog = prog_sel
         if prog_sel == "Altro...":
-            final_prog = c_prog.text_input("Specifica Programma")
+            final_prog = c_prog.text_input("Specifica Programma", key="alt_pro")
             
         liv_sel = c_liv.selectbox("Livello *", ["1-res", "2-res", "3-res", "1-var", "2-var", "3-var", "Altro..."], index=None, placeholder="Scegli...")
         final_liv = liv_sel
         if liv_sel == "Altro...":
-            final_liv = c_liv.text_input("Specifica Livello")
+            final_liv = c_liv.text_input("Specifica Livello", key="alt_liv")
 
         st.write("---")
         f8, f9, f10 = st.columns(3)
-        vel_ins = f8.number_input("Km/h *", min_value=0.0, step=0.1)
-        dist_ins = f9.number_input("Km *", min_value=0.0, step=0.1)
-        cal_ins = f10.number_input("Calorie *", min_value=0)
+        vel_ins = f8.number_input("Km/h *", min_value=0.0, step=0.1, value=0.0)
+        dist_ins = f9.number_input("Km *", min_value=0.0, step=0.1, value=0.0)
+        cal_ins = f10.number_input("Calorie *", min_value=0, value=0)
 
-        # Pulsante Standard (non primary/rosso) e centrato in una colonna piccola
+        # Pulsante Salva centrato, piccolo e non rosso
+        st.write("")
         _, col_btn, _ = st.columns([2, 1, 2])
         if col_btn.button("Salva Sessione", use_container_width=True):
             if nome_ins and cognome_ins and sede_ins and data_s and final_durata and final_prog and final_liv:
-                client = get_gspread_client()
-                sheet = client.open_by_key(ID_FOGLIO).sheet1
-                riga = [f"{nome_ins} {cognome_ins}", nome_ins, cognome_ins, 0, "", data_s.strftime("%d/%m/%Y"), 
-                        final_durata, final_prog, final_liv, vel_ins, dist_ins, cal_ins, sede_ins, 0, 0, 0]
-                sheet.append_row(riga)
-                st.cache_data.clear()
-                st.success("Salvato!")
-                st.rerun()
+                try:
+                    client = get_gspread_client()
+                    sheet = client.open_by_key(ID_FOGLIO).sheet1
+                    riga = [f"{nome_ins} {cognome_ins}", nome_ins, cognome_ins, 0, "", data_s.strftime("%d/%m/%Y"), 
+                            final_durata, final_prog, final_liv, vel_ins, dist_ins, cal_ins, sede_ins, 0, 0, 0]
+                    sheet.append_row(riga)
+                    st.cache_data.clear()
+                    st.success("Sessione Salvata!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Errore: {e}")
             else:
                 st.error("Compila tutti i campi obbligatori (*)")
 
-    # 4. STORICO 30 GIORNI E CANCELLAZIONE
+    # 4. ARCHIVIO E CANCELLAZIONE
     st.divider()
-    st.subheader("📊 Archivio Recente (Ultimi 30 giorni)")
+    st.subheader("📊 Archivio Recente (30gg)")
     if dati_raw:
         df_glob = pd.DataFrame(dati_raw)
         df_glob.columns = [str(c).strip() for c in df_glob.columns]
@@ -217,9 +234,9 @@ try:
             
             if not df_recenti.empty:
                 df_rec_view = filtra_privacy(df_recenti).sort_values(c_data_g, ascending=False)
-                df_display = df_rec_view.copy()
-                df_display[c_data_g] = df_display[c_data_g].dt.strftime('%d/%m/%Y')
-                st.dataframe(df_display, use_container_width=True)
+                df_display_arc = df_rec_view.copy()
+                df_display_arc[c_data_g] = df_display_arc[c_data_g].dt.strftime('%d/%m/%Y')
+                st.dataframe(df_display_arc, use_container_width=True)
 
                 with st.expander("🗑️ Cancella una riga dall'archivio"):
                     opzioni = []
@@ -228,15 +245,13 @@ try:
                         label = f"{d_str} - {r.get('Nome','')} {r.get('Cognome','')}"
                         opzioni.append({"label": label, "index": idx+2})
                     
-                    sk = st.selectbox("Seleziona riga:", opzioni, format_func=lambda x: x["label"], index=None, placeholder="Scegli sessione...")
-                    if st.button("Elimina"):
+                    sk = st.selectbox("Seleziona riga da eliminare:", opzioni, format_func=lambda x: x["label"], index=None, placeholder="Scegli...")
+                    if st.button("Conferma Eliminazione"):
                         if sk:
                             client = get_gspread_client()
                             client.open_by_key(ID_FOGLIO).sheet1.delete_rows(sk["index"])
                             st.cache_data.clear()
                             st.rerun()
-            else:
-                st.info("Nessuna sessione negli ultimi 30 giorni.")
 
 except Exception as e:
-    st.error(f"Si è verificato un errore: {e}")
+    st.error(f"Errore critico: {e}")
