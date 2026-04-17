@@ -26,9 +26,7 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # COSTANTI
 # ---------------------------------------------------------------------------
-# ⚠️  Per maggiore sicurezza sposta questo valore in st.secrets["ID_FOGLIO"]
-#     e sostituisci la riga con: ID_FOGLIO = st.secrets["ID_FOGLIO"]
-ID_FOGLIO = "1ngWM4rKWmcLDpOH79JDsRQ3QkGj5dkywQ7nTl91x1W4"
+ID_FOGLIO = st.secrets["ID_FOGLIO"]
 
 COLONNE_NASCOSTE   = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
 GOOGLE_SHEET_OFFSET = 2   # riga 1 = intestazione → i dati iniziano alla riga 2
