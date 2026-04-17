@@ -343,9 +343,21 @@ try:
             if not cognome_ins: errori.append("Cognome")
             if not sede_ins:    errori.append("Sede")
             if not data_s:      errori.append("Data")
-            if not f_durata:    errori.append("Sessione")
-            if not f_prog:      errori.append("Programma")
-            if not f_liv:       errori.append("Livello")
+            # Controllo campi "Altro..." : errore sia se non è stata fatta
+            # nessuna selezione, sia se è stato scelto "Altro..." ma il campo
+            # testo libero è rimasto vuoto
+            if not dur_sel:
+                errori.append("Sessione (nessuna selezione)")
+            elif dur_sel == "Altro..." and not f_durata:
+                errori.append("Sessione (hai scelto 'Altro...' ma non hai specificato il valore)")
+            if not prg_sel:
+                errori.append("Programma (nessuna selezione)")
+            elif prg_sel == "Altro..." and not f_prog:
+                errori.append("Programma (hai scelto 'Altro...' ma non hai specificato il valore)")
+            if not liv_sel:
+                errori.append("Livello (nessuna selezione)")
+            elif liv_sel == "Altro..." and not f_liv:
+                errori.append("Livello (hai scelto 'Altro...' ma non hai specificato il valore)")
             if vel == 0.0 and dist == 0.0 and cal == 0:
                 errori.append("almeno un valore tra Km/h, Km, Calorie deve essere > 0")
 
@@ -429,7 +441,4 @@ try:
 
 except Exception as e:
     logger.error("Errore generale: %s", e)
-    st.error(f"Errore generale: {e}")
-
-except Exception as e:
     st.error(f"Errore generale: {e}")
