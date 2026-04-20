@@ -441,20 +441,13 @@ try:
                         for _, r in df_recenti.iterrows()
                     ]
 
-                    # Gestiamo la selezione via session_state così Annulla
-                    # può azzerarla davvero prima del rerun
-                    if "cancella_idx" not in st.session_state:
-                        st.session_state.cancella_idx = None
-
                     scelta_idx = st.selectbox(
                         "Seleziona la sessione da eliminare:",
                         range(len(opzioni)),
                         format_func=lambda i: opzioni[i]["label"],
-                        index=st.session_state.cancella_idx,
+                        index=None,
                         key="sel_cancella"
                     )
-                    # Aggiorna session_state ad ogni selezione
-                    st.session_state.cancella_idx = scelta_idx
 
                     # ── Doppia conferma prima di cancellare ─────────────────
                     if scelta_idx is not None:
@@ -470,14 +463,15 @@ try:
                                 sheet  = client.open_by_key(ID_FOGLIO).sheet1
                                 ok = _retry(sheet.delete_rows, scelta["row_number"])
                                 if ok:
-                                    st.session_state.cancella_idx = None
+                                    # Cancella la selezione dalla session_state
+                                    del st.session_state["sel_cancella"]
                                     st.cache_data.clear()
                                     st.rerun()
                                 else:
                                     st.error("❌ Eliminazione fallita. Riprova tra qualche istante.")
                         if col_no.button("❌ Annulla", use_container_width=True):
-                            # Azzera la selezione PRIMA del rerun → selectbox torna vuota
-                            st.session_state.cancella_idx = None
+                            # Cancella la chiave della selectbox → torna vuota al rerun
+                            del st.session_state["sel_cancella"]
                             st.rerun()
 
 except Exception as e:
