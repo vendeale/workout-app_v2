@@ -225,8 +225,17 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", "", 8)
         for _, row in df_atleta.iterrows():
-            data_val  = str(row.get(c_data, ""))
-            solo_data = data_val.split(" ")[0] if " " in data_val else data_val
+            data_val  = row.get(c_data, "")
+            # Se è un Timestamp pandas lo formattiamo, altrimenti usiamo il valore grezzo
+            if hasattr(data_val, "strftime"):
+                solo_data = data_val.strftime("%d/%m/%Y")
+            else:
+                data_str = str(data_val).split(" ")[0] if " " in str(data_val) else str(data_val)
+                # Converti aaaa-mm-gg → gg/mm/aaaa se necessario
+                try:
+                    solo_data = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+                except ValueError:
+                    solo_data = data_str
             pdf.cell(col_widths[0], 7, solo_data,                                    1, 0, "C")
             pdf.cell(col_widths[1], 7, str(row.get(c_prog, ""))[:MAX_PDF_PROG_LEN], 1, 0, "L")
             pdf.cell(col_widths[2], 7, str(row.get(c_liv,  ""))[:MAX_PDF_LIV_LEN],  1, 0, "L")
@@ -288,7 +297,7 @@ try:
 
                 st.dataframe(df_display, use_container_width=True)
 
-                nome_file_pdf = f"Report_{datetime.now():%Y%m%d}_{n_input}_{c_input}.pdf".replace(" ", "_")
+                nome_file_pdf = f"Report_{datetime.now():%d%m%Y}_{n_input}_{c_input}.pdf".replace(" ", "_")
                 pdf_out = generate_pdf(df_view, f"{n_input} {c_input}")
                 if pdf_out:
                     st.download_button(
