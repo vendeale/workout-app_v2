@@ -440,15 +440,25 @@ try:
                         }
                         for _, r in df_recenti.iterrows()
                     ]
-                    scelta = st.selectbox(
+
+                    # Gestiamo la selezione via session_state così Annulla
+                    # può azzerarla davvero prima del rerun
+                    if "cancella_idx" not in st.session_state:
+                        st.session_state.cancella_idx = None
+
+                    scelta_idx = st.selectbox(
                         "Seleziona la sessione da eliminare:",
-                        opzioni,
-                        format_func=lambda x: x["label"],
-                        index=None
+                        range(len(opzioni)),
+                        format_func=lambda i: opzioni[i]["label"],
+                        index=st.session_state.cancella_idx,
+                        key="sel_cancella"
                     )
+                    # Aggiorna session_state ad ogni selezione
+                    st.session_state.cancella_idx = scelta_idx
 
                     # ── Doppia conferma prima di cancellare ─────────────────
-                    if scelta:
+                    if scelta_idx is not None:
+                        scelta = opzioni[scelta_idx]
                         st.warning(
                             f"⚠️ Stai per eliminare: **{scelta['label']}**. "
                             "Questa azione è irreversibile."
@@ -460,11 +470,14 @@ try:
                                 sheet  = client.open_by_key(ID_FOGLIO).sheet1
                                 ok = _retry(sheet.delete_rows, scelta["row_number"])
                                 if ok:
+                                    st.session_state.cancella_idx = None
                                     st.cache_data.clear()
                                     st.rerun()
                                 else:
                                     st.error("❌ Eliminazione fallita. Riprova tra qualche istante.")
                         if col_no.button("❌ Annulla", use_container_width=True):
+                            # Azzera la selezione PRIMA del rerun → selectbox torna vuota
+                            st.session_state.cancella_idx = None
                             st.rerun()
 
 except Exception as e:
