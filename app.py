@@ -88,7 +88,10 @@ def fetch_all_data(id_foglio: str) -> list[dict]:
     try:
         client = get_gspread_client()
         sheet  = client.open_by_key(id_foglio).sheet1
-        data   = sheet.get_all_records()
+        # numericise_ignore=['all'] impedisce a gspread di convertire
+        # autonomamente i numeri: '17,1' non diventa più 171 ma rimane
+        # stringa '17,1', che force_numeric converte correttamente in 17.1
+        data   = sheet.get_all_records(numericise_ignore=['all'])
         result = []
         for i, row in enumerate(data):
             clean = {str(k).strip(): v for k, v in row.items()}
