@@ -113,6 +113,24 @@ def force_numeric(val) -> float:
         return 0.0
 
 
+def normalizza_numerici(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converte le colonne numeriche note (km, km/h, calorie) da stringa
+    con virgola decimale (es. '18,7') a float corretto (18.7).
+    Viene applicata subito dopo la lettura dal foglio.
+    """
+    for col in df.columns:
+        col_up = str(col).upper().strip()
+        is_numeric_col = (
+            COL_KEYWORDS["KMH"](col_up)
+            or COL_KEYWORDS["KM"](col_up)
+            or COL_KEYWORDS["CALORIE"](col_up)
+        )
+        if is_numeric_col:
+            df[col] = df[col].apply(force_numeric)
+    return df
+
+
 def filtra_privacy(df: pd.DataFrame) -> pd.DataFrame:
     cols = [
         c for c in df.columns
@@ -246,7 +264,7 @@ try:
         c_input = col2.text_input("Filtra Cognome", key="src_c")
 
         if (n_input or c_input) and dati_raw:
-            df_full = pd.DataFrame(dati_raw)
+            df_full = normalizza_numerici(pd.DataFrame(dati_raw))
             # regex=False: protegge da input tipo ".*" o "[a-z]+"
             mask = (
                 df_full["Nome"].astype(str).str.contains(n_input, case=False, na=False, regex=False)
@@ -389,7 +407,7 @@ try:
     st.subheader("📊 Archivio Recente (30gg)")
 
     if dati_raw:
-        df_glob    = pd.DataFrame(dati_raw)
+        df_glob    = normalizza_numerici(pd.DataFrame(dati_raw))
         c_data_g   = get_exact_col(df_glob.columns, "DATA")
 
         if c_data_g:
