@@ -166,18 +166,30 @@ def get_df_normalizzato(dati_raw: list[dict]) -> pd.DataFrame:
     Costruisce e normalizza il DataFrame una volta sola per rerun,
     salvandolo in session_state per evitare di rielaborare gli stessi
     dati in più punti dell'app (ricerca + archivio).
+    Usa data_version come chiave univoca invece di len(dati_raw):
+    questo evita il caso limite in cui cancellazione + inserimento
+    riportino il conteggio righe al valore precedente, riusando
+    erroneamente il DataFrame vecchio dalla session_state.
     """
-    chiave = f"df_norm_{len(dati_raw)}"
+    if "data_version" not in st.session_state:
+        st.session_state.data_version = 0
+    chiave = f"df_norm_{st.session_state.data_version}"
     if chiave not in st.session_state:
         st.session_state[chiave] = normalizza_numerici(pd.DataFrame(dati_raw))
     return st.session_state[chiave].copy()
 
 
 def invalida_df_cache():
-    """Rimuove il DataFrame normalizzato dalla session_state dopo scritture/cancellazioni."""
-    for k in list(st.session_state.keys()):
-        if k.startswith("df_norm_"):
-            del st.session_state[k]
+    """
+    Incrementa data_version e rimuove il DataFrame precedente dalla
+    session_state dopo ogni scrittura o cancellazione, forzando la
+    ricostruzione al prossimo rerun con i dati aggiornati.
+    """
+    versione_corrente = st.session_state.get("data_version", 0)
+    chiave_vecchia = f"df_norm_{versione_corrente}"
+    if chiave_vecchia in st.session_state:
+        del st.session_state[chiave_vecchia]
+    st.session_state.data_version = versione_corrente + 1
 
 
 def filtra_privacy(df: pd.DataFrame) -> pd.DataFrame:
