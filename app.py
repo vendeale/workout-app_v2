@@ -300,7 +300,7 @@ def _fmt(val) -> str:
     """Formatta un valore numerico come stringa Euro per il PDF."""
     try:
         f = float(val)
-        return f"€ {f:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"EUR {f:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except (ValueError, TypeError):
         return "€ 0,00"
 
