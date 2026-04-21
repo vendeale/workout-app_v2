@@ -24,18 +24,17 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# COSTANTI
+# COSTANTI — WORKOUT
 # ---------------------------------------------------------------------------
 ID_FOGLIO           = st.secrets["ID_FOGLIO"]
 COLONNE_NASCOSTE    = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
-GOOGLE_SHEET_OFFSET = 2      # riga 1 = intestazione → dati dalla riga 2
-CACHE_TTL           = 600    # secondi (10 minuti)
-CLIENT_TTL          = 3000   # secondi (50 minuti) — token Google scadono a 60 min
+GOOGLE_SHEET_OFFSET = 2
+CACHE_TTL           = 600
+CLIENT_TTL          = 3000
 MAX_PDF_PROG_LEN    = 22
 MAX_PDF_LIV_LEN     = 20
-MAX_INPUT_LEN       = 100    # caratteri massimi per i campi testo libero
+MAX_INPUT_LEN       = 100
 
-# Mapping colonne: chiave → funzione che riceve il nome colonna in UPPERCASE
 COL_KEYWORDS: dict = {
     "KMH":       lambda c: "KM/H" in c or "VELOCIT" in c,
     "KM":        lambda c: ("KM" in c and "KM/H" not in c and "VELOCIT" not in c) or "DISTANZA" in c,
@@ -46,15 +45,34 @@ COL_KEYWORDS: dict = {
 }
 
 # ---------------------------------------------------------------------------
+# COSTANTI — QUADRATURA CASSA
+# ---------------------------------------------------------------------------
+QUADRATURE_SHEET_NAME = "Quadrature"
+QUADRATURE_HEADERS = [
+    "Data", "Sede", "Operatore",
+    # Scontrini fiscali (input)
+    "Sc_Bancomat", "Sc_Visa", "Sc_Mastercard", "Sc_Contanti",
+    "Sc_Bonifico", "Sc_Assegno", "Sc_Groupon", "Sc_Gympass",
+    "Sc_Amex", "Sc_Altro", "Sc_Altro_Desc",
+    "Tot_Scontrini",
+    # Fatture (input)
+    "Ft_Bancomat", "Ft_Visa", "Ft_Mastercard", "Ft_Contanti",
+    "Ft_Bonifico", "Ft_Assegno", "Ft_Groupon", "Ft_Fitprime",
+    "Ft_Amex", "Ft_Aquatime", "Ft_Altro", "Ft_Altro_Desc",
+    "Tot_Fatture",
+    # Totale generale
+    "Tot_Generale",
+    # Saldo cassa
+    "Saldo_Iniziale", "Incasso_Contanti",
+    "Pag1", "Note_Pag1", "Pag2", "Note_Pag2", "Pag3", "Note_Pag3",
+    "Versamento_Banca", "Prelievo_Admin",
+    "Saldo_Finale",
+]
+
+# ---------------------------------------------------------------------------
 # AUTENTICAZIONE OPZIONALE
 # ---------------------------------------------------------------------------
 def check_auth() -> None:
-    """
-    Attiva la password SOLO se 'app_password' è presente in st.secrets.
-    Se non configurata, l'app rimane accessibile senza login.
-    Per attivarla aggiungi nel secrets.toml:
-        app_password = "la-tua-password"
-    """
     if "app_password" not in st.secrets:
         return
     if not st.session_state.get("authenticated", False):
@@ -72,27 +90,16 @@ def check_auth() -> None:
 # SICUREZZA INPUT
 # ---------------------------------------------------------------------------
 def sanifica(val: str) -> str:
-    """
-    Previene formula injection in Google Sheet.
-    Se il valore inizia con =, +, -, @, |, % aggiunge un apostrofo iniziale
-    che forza Google Sheet a trattarlo come testo e non come formula.
-    Tronca inoltre a MAX_INPUT_LEN caratteri.
-    """
     val = str(val).strip()[:MAX_INPUT_LEN]
     if val and val[0] in ("=", "+", "-", "@", "|", "%"):
         return "'" + val
     return val
 
 # ---------------------------------------------------------------------------
-# ACCESSO AI DATI
+# ACCESSO AI DATI — WORKOUT
 # ---------------------------------------------------------------------------
 @st.cache_resource(ttl=CLIENT_TTL)
 def get_gspread_client():
-    """
-    Crea il client gspread con TTL di 50 minuti per prevenire
-    la scadenza del token Google (che avviene a 60 minuti).
-    Scope ridotto a solo 'spreadsheets' — non serve accesso a Drive.
-    """
     creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
@@ -102,20 +109,11 @@ def get_gspread_client():
 
 @st.cache_resource(ttl=CLIENT_TTL)
 def get_sheet():
-    """Oggetto sheet cachato — evita di riaprire il foglio ad ogni scrittura."""
     return get_gspread_client().open_by_key(ID_FOGLIO).sheet1
 
 
 @st.cache_data(ttl=CACHE_TTL)
 def fetch_all_data(id_foglio: str) -> list[dict]:
-    """
-    Legge tutti i record dal foglio Google.
-    numericise_ignore=['all'] impedisce a gspread di convertire
-    autonomamente i numeri: '17,1' resta stringa '17,1' e viene
-    poi convertito correttamente da normalizza_numerici.
-    Rilancia l'eccezione invece di chiamare st.error() dentro la
-    funzione cached (le funzioni cached non devono avere side effect UI).
-    """
     client = get_gspread_client()
     sheet  = client.open_by_key(id_foglio).sheet1
     data   = sheet.get_all_records(numericise_ignore=['all'])
@@ -128,7 +126,47 @@ def fetch_all_data(id_foglio: str) -> list[dict]:
     return result
 
 # ---------------------------------------------------------------------------
-# UTILITY
+# ACCESSO AI DATI — QUADRATURA CASSA
+# ---------------------------------------------------------------------------
+def get_or_create_quadrature_sheet() -> gspread.Worksheet:
+    """
+    Restituisce il tab 'Quadrature'. Se non esiste lo crea con le intestazioni.
+    Non cachato perché ha side-effect (creazione tab).
+    """
+    spreadsheet = get_gspread_client().open_by_key(ID_FOGLIO)
+    try:
+        ws = spreadsheet.worksheet(QUADRATURE_SHEET_NAME)
+        # Verifica che le intestazioni esistano
+        if not ws.row_values(1):
+            ws.append_row(QUADRATURE_HEADERS)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = spreadsheet.add_worksheet(
+            title=QUADRATURE_SHEET_NAME,
+            rows=2000,
+            cols=len(QUADRATURE_HEADERS)
+        )
+        ws.append_row(QUADRATURE_HEADERS)
+        logger.info("Creato tab '%s'", QUADRATURE_SHEET_NAME)
+    return ws
+
+
+def get_last_saldo_iniziale(sede: str) -> float:
+    """
+    Recupera l'ultimo Saldo_Finale dal tab Quadrature per la sede indicata.
+    Restituisce 0.0 se non ci sono record precedenti.
+    """
+    try:
+        ws = get_or_create_quadrature_sheet()
+        records = ws.get_all_records()
+        records_sede = [r for r in records if str(r.get("Sede", "")).strip() == sede]
+        if records_sede:
+            return force_numeric(records_sede[-1].get("Saldo_Finale", 0))
+    except Exception as e:
+        logger.error("Errore recupero saldo iniziale: %s", e)
+    return 0.0
+
+# ---------------------------------------------------------------------------
+# UTILITY — WORKOUT
 # ---------------------------------------------------------------------------
 def force_numeric(val) -> float:
     if val is None or val == "":
@@ -140,12 +178,6 @@ def force_numeric(val) -> float:
 
 
 def normalizza_numerici(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Converte le colonne numeriche (km, km/h, calorie) da stringa con virgola
-    decimale (es. '18,7') a float corretto (18.7).
-    Usa operazioni vettorizzate pandas invece di .apply() riga per riga
-    per prestazioni migliori su dataset grandi.
-    """
     for col in df.columns:
         col_up = str(col).upper().strip()
         is_numeric_col = (
@@ -162,15 +194,6 @@ def normalizza_numerici(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_df_normalizzato(dati_raw: list[dict]) -> pd.DataFrame:
-    """
-    Costruisce e normalizza il DataFrame una volta sola per rerun,
-    salvandolo in session_state per evitare di rielaborare gli stessi
-    dati in più punti dell'app (ricerca + archivio).
-    Usa data_version come chiave univoca invece di len(dati_raw):
-    questo evita il caso limite in cui cancellazione + inserimento
-    riportino il conteggio righe al valore precedente, riusando
-    erroneamente il DataFrame vecchio dalla session_state.
-    """
     if "data_version" not in st.session_state:
         st.session_state.data_version = 0
     chiave = f"df_norm_{st.session_state.data_version}"
@@ -180,11 +203,6 @@ def get_df_normalizzato(dati_raw: list[dict]) -> pd.DataFrame:
 
 
 def invalida_df_cache():
-    """
-    Incrementa data_version e rimuove il DataFrame precedente dalla
-    session_state dopo ogni scrittura o cancellazione, forzando la
-    ricostruzione al prossimo rerun con i dati aggiornati.
-    """
     versione_corrente = st.session_state.get("data_version", 0)
     chiave_vecchia = f"df_norm_{versione_corrente}"
     if chiave_vecchia in st.session_state:
@@ -202,7 +220,6 @@ def filtra_privacy(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_exact_col(columns, target: str):
-    """Restituisce il nome colonna che corrisponde al target, o None."""
     matcher = COL_KEYWORDS.get(target)
     if not matcher:
         return None
@@ -213,7 +230,6 @@ def get_exact_col(columns, target: str):
 
 
 def _retry(fn, *args, max_retries: int = 3, **kwargs) -> bool:
-    """Esegue fn con backoff esponenziale in caso di eccezione."""
     for attempt in range(max_retries):
         try:
             fn(*args, **kwargs)
@@ -221,18 +237,75 @@ def _retry(fn, *args, max_retries: int = 3, **kwargs) -> bool:
         except Exception as e:
             if attempt < max_retries - 1:
                 wait = 2 ** attempt
-                logger.warning(
-                    "Tentativo %d/%d fallito (%s), retry tra %ds",
-                    attempt + 1, max_retries, e, wait
-                )
+                logger.warning("Tentativo %d/%d fallito (%s), retry tra %ds",
+                               attempt + 1, max_retries, e, wait)
                 time.sleep(wait)
             else:
                 logger.error("Operazione fallita dopo %d tentativi: %s", max_retries, e)
     return False
 
+# ---------------------------------------------------------------------------
+# UTILITY — QUADRATURA CASSA
+# ---------------------------------------------------------------------------
+def calcola_quadratura(inp: dict) -> dict:
+    """
+    Replica le formule Excel del FOGLIO_CASSA_GIORNALIERO:
+      U25  = SUM(A25:T27)  → Tot_Scontrini
+      W33  = SUM(A33:V35)  → Tot_Fatture
+      AA41 = SUM(A41:Z43)  → Tot_Generale (= Tot_Scontrini + Tot_Fatture)
+      I60  = G25+G33       → Incasso_Contanti
+      I73  = I58+I60-I62-I64-I66-I68-I70 → Saldo_Finale
+    """
+    d = inp.copy()
+
+    d["Tot_Scontrini"] = round(sum([
+        d.get("Sc_Bancomat", 0.0), d.get("Sc_Visa", 0.0),
+        d.get("Sc_Mastercard", 0.0), d.get("Sc_Contanti", 0.0),
+        d.get("Sc_Bonifico", 0.0), d.get("Sc_Assegno", 0.0),
+        d.get("Sc_Groupon", 0.0), d.get("Sc_Gympass", 0.0),
+        d.get("Sc_Amex", 0.0), d.get("Sc_Altro", 0.0),
+    ]), 2)
+
+    d["Tot_Fatture"] = round(sum([
+        d.get("Ft_Bancomat", 0.0), d.get("Ft_Visa", 0.0),
+        d.get("Ft_Mastercard", 0.0), d.get("Ft_Contanti", 0.0),
+        d.get("Ft_Bonifico", 0.0), d.get("Ft_Assegno", 0.0),
+        d.get("Ft_Groupon", 0.0), d.get("Ft_Fitprime", 0.0),
+        d.get("Ft_Amex", 0.0), d.get("Ft_Aquatime", 0.0),
+        d.get("Ft_Altro", 0.0),
+    ]), 2)
+
+    d["Tot_Generale"] = round(d["Tot_Scontrini"] + d["Tot_Fatture"], 2)
+
+    # Incasso contanti = contanti scontrini + contanti fatture (cella I60 = G25+G33)
+    d["Incasso_Contanti"] = round(
+        d.get("Sc_Contanti", 0.0) + d.get("Ft_Contanti", 0.0), 2
+    )
+
+    # Saldo finale = I73 = I58 + I60 - I62 - I64 - I66 - I68 - I70
+    d["Saldo_Finale"] = round(
+        d.get("Saldo_Iniziale", 0.0)
+        + d["Incasso_Contanti"]
+        - d.get("Pag1", 0.0)
+        - d.get("Pag2", 0.0)
+        - d.get("Pag3", 0.0)
+        - d.get("Versamento_Banca", 0.0)
+        - d.get("Prelievo_Admin", 0.0),
+        2
+    )
+    return d
+
+
+def _fmt(val) -> str:
+    """Formatta un valore numerico come stringa Euro per il PDF."""
+    try:
+        f = float(val)
+        return f"€ {f:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (ValueError, TypeError):
+        return "€ 0,00"
 
 # ---------------------------------------------------------------------------
-# GENERAZIONE PDF
+# GENERAZIONE PDF — WORKOUT
 # ---------------------------------------------------------------------------
 def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
     try:
@@ -252,7 +325,6 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
         cal_avg = df_atleta[c_cal].apply(force_numeric).mean() if c_cal else 0.0
 
-        # ── Header ──────────────────────────────────────────────────────────
         pdf.set_fill_color(0, 80, 158)
         pdf.rect(0, 0, 210, 40, "F")
         pdf.set_text_color(255, 255, 255)
@@ -262,7 +334,6 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         pdf.set_font("helvetica", "", 12)
         pdf.cell(0, 10, f"REPORT: {nome_atleta.upper()}", align="C", new_x="LMARGIN", new_y="NEXT")
 
-        # ── KPI ─────────────────────────────────────────────────────────────
         pdf.set_y(45)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", "B", 11)
@@ -272,7 +343,6 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}",      1, 1, "C", True)
         pdf.ln(5)
 
-        # ── Intestazione tabella ─────────────────────────────────────────────
         col_widths = [25, 45, 40, 20, 20, 25]
         headers    = ["Data", "Programma", "Livello", "Km", "Km/h", "Calorie"]
         pdf.set_font("helvetica", "B", 9)
@@ -282,7 +352,6 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
             pdf.cell(w, 8, h, 1, 0, "C", True)
         pdf.ln()
 
-        # ── Righe dati ───────────────────────────────────────────────────────
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", "", 8)
         for _, row in df_atleta.iterrows():
@@ -307,9 +376,395 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         return bytes(out) if isinstance(out, bytearray) else out
 
     except Exception as e:
-        logger.error("Errore PDF: %s", e)
+        logger.error("Errore PDF workout: %s", e)
         st.error(f"Errore generazione PDF: {e}")
         return None
+
+# ---------------------------------------------------------------------------
+# GENERAZIONE PDF — QUADRATURA CASSA
+# ---------------------------------------------------------------------------
+def genera_pdf_quadratura(d: dict) -> bytes | None:
+    """
+    Genera il PDF della quadratura cassa giornaliera su una pagina A4.
+    Layout a due colonne affiancate per Scontrini e Fatture,
+    seguita dalla sezione Saldo Cassa.
+    """
+    try:
+        pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_auto_page_break(auto=False)
+        pdf.add_page()
+
+        BLUE  = (0, 80, 158)
+        LGRAY = (235, 235, 235)
+        DGRAY = (180, 180, 180)
+        BLACK = (0, 0, 0)
+        WHITE = (255, 255, 255)
+
+        LM = 8    # left margin
+        PW = 194  # page width usable (210 - 2*8)
+        CW = 95   # column width for left/right panels
+
+        # ── HEADER ─────────────────────────────────────────────────────────
+        pdf.set_fill_color(*BLUE)
+        pdf.rect(0, 0, 210, 18, "F")
+        pdf.set_text_color(*WHITE)
+        pdf.set_font("helvetica", "B", 14)
+        pdf.set_xy(LM, 3)
+        pdf.cell(PW, 7, "AQUATIME ROMA — QUADRATURA CASSA GIORNALIERA", align="C")
+        pdf.set_font("helvetica", "B", 11)
+        pdf.set_xy(LM, 11)
+        pdf.cell(PW, 5, f"SEDE: {d.get('Sede','').upper()}", align="C")
+
+        # ── INFO ROW ───────────────────────────────────────────────────────
+        pdf.set_text_color(*BLACK)
+        pdf.set_fill_color(*LGRAY)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_xy(LM, 21)
+        pdf.cell(40, 7, "DATA:", 1, 0, "L", True)
+        pdf.set_font("helvetica", "", 9)
+        pdf.cell(55, 7, str(d.get("Data", "")), 1, 0, "L")
+        pdf.set_font("helvetica", "B", 9)
+        pdf.cell(35, 7, "OPERATORE:", 1, 0, "L", True)
+        pdf.set_font("helvetica", "", 9)
+        pdf.cell(PW - 40 - 55 - 35, 7, str(d.get("Operatore", "")), 1, 1, "L")
+
+        y_after_info = pdf.get_y() + 3
+
+        # ── Helper: sezione bicolonna ───────────────────────────────────────
+        def section_header(title: str, x: float, y: float, w: float):
+            pdf.set_xy(x, y)
+            pdf.set_fill_color(*BLUE)
+            pdf.set_text_color(*WHITE)
+            pdf.set_font("helvetica", "B", 8)
+            pdf.cell(w, 6, title, 1, 0, "C", True)
+            pdf.set_text_color(*BLACK)
+
+        def payment_row(label: str, val: float, x: float, y: float,
+                        lw: float = 52, vw: float = 43, fill: bool = False):
+            pdf.set_xy(x, y)
+            pdf.set_fill_color(*LGRAY)
+            pdf.set_font("helvetica", "", 7)
+            pdf.cell(lw, 5.5, label, 1, 0, "L", fill)
+            pdf.set_font("helvetica", "B" if fill else "", 7)
+            pdf.cell(vw, 5.5, _fmt(val), 1, 0, "R", fill)
+
+        # ── SCONTRINI FISCALI (colonna sinistra) ───────────────────────────
+        x_left  = LM
+        x_right = LM + CW + 4
+        y_cur   = y_after_info
+
+        section_header("SCONTRINI FISCALI", x_left, y_cur, CW)
+        section_header("FATTURE",           x_right, y_cur, CW)
+        y_cur += 6
+
+        scontrini_rows = [
+            ("Bancomat",    d.get("Sc_Bancomat",   0.0)),
+            ("Visa",        d.get("Sc_Visa",        0.0)),
+            ("Mastercard",  d.get("Sc_Mastercard",  0.0)),
+            ("Contanti",    d.get("Sc_Contanti",    0.0)),
+            ("Bonifico",    d.get("Sc_Bonifico",    0.0)),
+            ("Assegno",     d.get("Sc_Assegno",     0.0)),
+            ("Groupon",     d.get("Sc_Groupon",     0.0)),
+            ("Gympass",     d.get("Sc_Gympass",     0.0)),
+            ("Amex",        d.get("Sc_Amex",        0.0)),
+            (f"Altro ({d.get('Sc_Altro_Desc','')[:12]})",
+                            d.get("Sc_Altro",       0.0)),
+        ]
+        fatture_rows = [
+            ("Bancomat",    d.get("Ft_Bancomat",    0.0)),
+            ("Visa",        d.get("Ft_Visa",        0.0)),
+            ("Mastercard",  d.get("Ft_Mastercard",  0.0)),
+            ("Contanti",    d.get("Ft_Contanti",    0.0)),
+            ("Bonifico",    d.get("Ft_Bonifico",    0.0)),
+            ("Assegno",     d.get("Ft_Assegno",     0.0)),
+            ("Groupon",     d.get("Ft_Groupon",     0.0)),
+            ("Fitprime",    d.get("Ft_Fitprime",    0.0)),
+            ("Amex",        d.get("Ft_Amex",        0.0)),
+            ("Aquatime P/T",d.get("Ft_Aquatime",    0.0)),
+            (f"Altro ({d.get('Ft_Altro_Desc','')[:12]})",
+                            d.get("Ft_Altro",       0.0)),
+        ]
+
+        max_rows = max(len(scontrini_rows), len(fatture_rows))
+        for i in range(max_rows):
+            if i < len(scontrini_rows):
+                payment_row(scontrini_rows[i][0], scontrini_rows[i][1], x_left, y_cur)
+            if i < len(fatture_rows):
+                payment_row(fatture_rows[i][0], fatture_rows[i][1], x_right, y_cur)
+            y_cur += 5.5
+
+        # Totali sezione
+        payment_row("TOTALE SCONTRINI", d["Tot_Scontrini"], x_left,  y_cur, fill=True)
+        payment_row("TOTALE FATTURE",   d["Tot_Fatture"],   x_right, y_cur, fill=True)
+        y_cur += 5.5 + 4
+
+        # ── TOTALE GENERALE ────────────────────────────────────────────────
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*BLUE)
+        pdf.set_text_color(*WHITE)
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(130, 8, "TOTALE GENERALE (Scontrini + Fatture)", 1, 0, "L", True)
+        pdf.cell(PW - 130, 8, _fmt(d["Tot_Generale"]), 1, 1, "R", True)
+        pdf.set_text_color(*BLACK)
+        y_cur = pdf.get_y() + 5
+
+        # ── SALDO CASSA CONTANTI ───────────────────────────────────────────
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*BLUE)
+        pdf.set_text_color(*WHITE)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.cell(PW, 6, "SALDO CASSA CONTANTI", 1, 1, "C", True)
+        pdf.set_text_color(*BLACK)
+        y_cur = pdf.get_y()
+
+        LW_SALDO = 110  # label width
+        VW_SALDO = PW - LW_SALDO  # value width
+
+        def saldo_row(label: str, val, bold_val: bool = False,
+                      fill_color=None, text_color=BLACK):
+            nonlocal y_cur
+            fc = fill_color if fill_color else WHITE
+            pdf.set_xy(LM, y_cur)
+            pdf.set_fill_color(*fc)
+            pdf.set_font("helvetica", "", 8)
+            pdf.cell(LW_SALDO, 6.5, label, 1, 0, "L", True)
+            pdf.set_font("helvetica", "B" if bold_val else "", 8)
+            pdf.set_text_color(*text_color)
+            pdf.cell(VW_SALDO, 6.5, _fmt(val), 1, 1, "R", True)
+            pdf.set_text_color(*BLACK)
+            y_cur += 6.5
+
+        saldo_row("Saldo Iniziale Cassa Contanti",         d.get("Saldo_Iniziale",    0.0), fill_color=LGRAY)
+        saldo_row("(+) Incasso Contanti del giorno",       d.get("Incasso_Contanti",  0.0))
+        note1 = f"(-) Pagamento 1 — {d.get('Note_Pag1','')[:30]}" if d.get("Note_Pag1") else "(-) Pagamento 1"
+        note2 = f"(-) Pagamento 2 — {d.get('Note_Pag2','')[:30]}" if d.get("Note_Pag2") else "(-) Pagamento 2"
+        note3 = f"(-) Pagamento 3 — {d.get('Note_Pag3','')[:30]}" if d.get("Note_Pag3") else "(-) Pagamento 3"
+        saldo_row(note1,                                   d.get("Pag1",              0.0))
+        saldo_row(note2,                                   d.get("Pag2",              0.0))
+        saldo_row(note3,                                   d.get("Pag3",              0.0))
+        saldo_row("(-) Versamento in Banca",               d.get("Versamento_Banca",  0.0))
+        saldo_row("(-) Prelievo Amministratore",           d.get("Prelievo_Admin",    0.0))
+
+        # Saldo Finale — riga evidenziata
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*BLUE)
+        pdf.set_text_color(*WHITE)
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(LW_SALDO, 8, "SALDO FINALE CASSA CONTANTI", 1, 0, "L", True)
+        pdf.cell(VW_SALDO, 8, _fmt(d["Saldo_Finale"]), 1, 1, "R", True)
+
+        out = pdf.output()
+        return bytes(out) if isinstance(out, bytearray) else out
+
+    except Exception as e:
+        logger.error("Errore PDF quadratura: %s", e)
+        st.error(f"Errore generazione PDF quadratura: {e}")
+        return None
+
+# ---------------------------------------------------------------------------
+# FORM QUADRATURA CASSA
+# ---------------------------------------------------------------------------
+def render_form_quadratura(sede: str) -> None:
+    """Renderizza il form di quadratura cassa per la sede indicata."""
+
+    # ── Bottone torna alla home ─────────────────────────────────────────────
+    if st.button("← Torna alla Home"):
+        st.session_state.pagina = "home"
+        st.rerun()
+
+    st.subheader(f"📋 Quadratura Cassa — {sede}")
+
+    # form_id per reset dopo salvataggio
+    if "qfid" not in st.session_state:
+        st.session_state.qfid = 0
+    qfid = st.session_state.qfid
+
+    # Saldo iniziale pre-caricato dal giorno precedente
+    if f"saldo_init_loaded_{sede}_{qfid}" not in st.session_state:
+        st.session_state[f"saldo_init_loaded_{sede}_{qfid}"] = get_last_saldo_iniziale(sede)
+
+    saldo_precedente = st.session_state[f"saldo_init_loaded_{sede}_{qfid}"]
+
+    with st.container(border=True):
+
+        # ── INTESTAZIONE ─────────────────────────────────────────────────
+        st.markdown("**📅 Intestazione**")
+        c1, c2 = st.columns(2)
+        data_q   = c1.date_input("Data *", value=datetime.today(), format="DD/MM/YYYY",
+                                 key=f"qdata_{qfid}")
+        operatore = c2.text_input("Operatore (Nome Cognome) *", key=f"qop_{qfid}",
+                                  max_chars=MAX_INPUT_LEN)
+
+        st.divider()
+
+        # ── SCONTRINI FISCALI ─────────────────────────────────────────────
+        st.markdown("**🧾 Scontrini Fiscali**")
+        cs1, cs2, cs3, cs4, cs5 = st.columns(5)
+        sc_bancomat  = cs1.number_input("Bancomat",   min_value=0.0, step=0.01, key=f"sc_bk_{qfid}")
+        sc_visa      = cs2.number_input("Visa",       min_value=0.0, step=0.01, key=f"sc_vs_{qfid}")
+        sc_master    = cs3.number_input("Mastercard", min_value=0.0, step=0.01, key=f"sc_mc_{qfid}")
+        sc_contanti  = cs4.number_input("Contanti",   min_value=0.0, step=0.01, key=f"sc_ct_{qfid}")
+        sc_bonifico  = cs5.number_input("Bonifico",   min_value=0.0, step=0.01, key=f"sc_bn_{qfid}")
+
+        cs6, cs7, cs8, cs9, cs10 = st.columns(5)
+        sc_assegno   = cs6.number_input("Assegno",   min_value=0.0, step=0.01, key=f"sc_as_{qfid}")
+        sc_groupon   = cs7.number_input("Groupon",   min_value=0.0, step=0.01, key=f"sc_gp_{qfid}")
+        sc_gympass   = cs8.number_input("Gympass",   min_value=0.0, step=0.01, key=f"sc_gym_{qfid}")
+        sc_amex      = cs9.number_input("Amex",      min_value=0.0, step=0.01, key=f"sc_amx_{qfid}")
+        sc_altro     = cs10.number_input("Altro",    min_value=0.0, step=0.01, key=f"sc_alt_{qfid}")
+        sc_altro_desc = st.text_input("Specificare Altro Scontrini",
+                                      key=f"sc_altd_{qfid}", max_chars=50)
+
+        tot_sc = round(sc_bancomat+sc_visa+sc_master+sc_contanti+sc_bonifico+
+                       sc_assegno+sc_groupon+sc_gympass+sc_amex+sc_altro, 2)
+        st.info(f"**Totale Scontrini: {_fmt(tot_sc)}**")
+
+        st.divider()
+
+        # ── FATTURE ───────────────────────────────────────────────────────
+        st.markdown("**📄 Fatture**")
+        cf1, cf2, cf3, cf4, cf5 = st.columns(5)
+        ft_bancomat  = cf1.number_input("Bancomat",    min_value=0.0, step=0.01, key=f"ft_bk_{qfid}")
+        ft_visa      = cf2.number_input("Visa",        min_value=0.0, step=0.01, key=f"ft_vs_{qfid}")
+        ft_master    = cf3.number_input("Mastercard",  min_value=0.0, step=0.01, key=f"ft_mc_{qfid}")
+        ft_contanti  = cf4.number_input("Contanti",    min_value=0.0, step=0.01, key=f"ft_ct_{qfid}")
+        ft_bonifico  = cf5.number_input("Bonifico",    min_value=0.0, step=0.01, key=f"ft_bn_{qfid}")
+
+        cf6, cf7, cf8, cf9, cf10, cf11 = st.columns(6)
+        ft_assegno   = cf6.number_input("Assegno",    min_value=0.0, step=0.01, key=f"ft_as_{qfid}")
+        ft_groupon   = cf7.number_input("Groupon",    min_value=0.0, step=0.01, key=f"ft_gp_{qfid}")
+        ft_fitprime  = cf8.number_input("Fitprime",   min_value=0.0, step=0.01, key=f"ft_fp_{qfid}")
+        ft_amex      = cf9.number_input("Amex",       min_value=0.0, step=0.01, key=f"ft_amx_{qfid}")
+        ft_aquatime  = cf10.number_input("Aquatime",  min_value=0.0, step=0.01, key=f"ft_aq_{qfid}")
+        ft_altro     = cf11.number_input("Altro",     min_value=0.0, step=0.01, key=f"ft_alt_{qfid}")
+        ft_altro_desc = st.text_input("Specificare Altro Fatture",
+                                      key=f"ft_altd_{qfid}", max_chars=50)
+
+        tot_ft = round(ft_bancomat+ft_visa+ft_master+ft_contanti+ft_bonifico+
+                       ft_assegno+ft_groupon+ft_fitprime+ft_amex+ft_aquatime+ft_altro, 2)
+        st.info(f"**Totale Fatture: {_fmt(tot_ft)}**")
+
+        st.divider()
+
+        # ── SALDO CASSA CONTANTI ──────────────────────────────────────────
+        st.markdown("**💵 Saldo Cassa Contanti**")
+
+        cs_col1, cs_col2 = st.columns(2)
+        saldo_iniziale = cs_col1.number_input(
+            "Saldo Iniziale Cassa (dal giorno precedente) *",
+            value=float(saldo_precedente),
+            min_value=0.0, step=0.01,
+            key=f"q_siniz_{qfid}",
+            help="Pre-compilato con il saldo finale del giorno precedente. Modificabile."
+        )
+
+        incasso_contanti = round(sc_contanti + ft_contanti, 2)
+        cs_col2.metric("Incasso Contanti del giorno", _fmt(incasso_contanti),
+                       help="Calcolato automaticamente: Contanti Scontrini + Contanti Fatture")
+
+        cp1, cp2, cp3 = st.columns(3)
+        pag1 = cp1.number_input("Pagamento 1 (€)", min_value=0.0, step=0.01, key=f"q_p1_{qfid}")
+        pag2 = cp2.number_input("Pagamento 2 (€)", min_value=0.0, step=0.01, key=f"q_p2_{qfid}")
+        pag3 = cp3.number_input("Pagamento 3 (€)", min_value=0.0, step=0.01, key=f"q_p3_{qfid}")
+
+        cn1, cn2, cn3 = st.columns(3)
+        note_pag1 = cn1.text_input("Descrizione Pag. 1", key=f"q_n1_{qfid}", max_chars=50)
+        note_pag2 = cn2.text_input("Descrizione Pag. 2", key=f"q_n2_{qfid}", max_chars=50)
+        note_pag3 = cn3.text_input("Descrizione Pag. 3", key=f"q_n3_{qfid}", max_chars=50)
+
+        cv1, cv2 = st.columns(2)
+        versamento = cv1.number_input("Versamento in Banca (€)", min_value=0.0, step=0.01,
+                                      key=f"q_vb_{qfid}")
+        prelievo   = cv2.number_input("Prelievo Amministratore (€)", min_value=0.0, step=0.01,
+                                      key=f"q_pa_{qfid}")
+
+        # Riepilogo calcolato in tempo reale
+        saldo_finale = round(saldo_iniziale + incasso_contanti
+                             - pag1 - pag2 - pag3 - versamento - prelievo, 2)
+        tot_gen      = round(tot_sc + tot_ft, 2)
+
+        st.divider()
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Totale Generale",     _fmt(tot_gen))
+        r2.metric("Incasso Contanti",     _fmt(incasso_contanti))
+        r3.metric("💰 Saldo Finale Cassa", _fmt(saldo_finale))
+
+        # ── PULSANTE SALVA ────────────────────────────────────────────────
+        _, col_btn, _ = st.columns([2, 1, 2])
+        if col_btn.button("💾 Salva e genera PDF", use_container_width=True):
+
+            errori = []
+            if not operatore: errori.append("Operatore")
+            if not data_q:    errori.append("Data")
+
+            if errori:
+                st.error(f"Compila i campi obbligatori: {', '.join(errori)}")
+            else:
+                # Raccogli tutti i dati
+                inp = {
+                    "Data":      data_q.strftime("%d/%m/%Y"),
+                    "Sede":      sede,
+                    "Operatore": sanifica(operatore),
+                    # Scontrini
+                    "Sc_Bancomat":   sc_bancomat,  "Sc_Visa":     sc_visa,
+                    "Sc_Mastercard": sc_master,    "Sc_Contanti": sc_contanti,
+                    "Sc_Bonifico":   sc_bonifico,  "Sc_Assegno":  sc_assegno,
+                    "Sc_Groupon":    sc_groupon,   "Sc_Gympass":  sc_gympass,
+                    "Sc_Amex":       sc_amex,      "Sc_Altro":    sc_altro,
+                    "Sc_Altro_Desc": sanifica(sc_altro_desc),
+                    # Fatture
+                    "Ft_Bancomat":   ft_bancomat,  "Ft_Visa":     ft_visa,
+                    "Ft_Mastercard": ft_master,    "Ft_Contanti": ft_contanti,
+                    "Ft_Bonifico":   ft_bonifico,  "Ft_Assegno":  ft_assegno,
+                    "Ft_Groupon":    ft_groupon,   "Ft_Fitprime": ft_fitprime,
+                    "Ft_Amex":       ft_amex,      "Ft_Aquatime": ft_aquatime,
+                    "Ft_Altro":      ft_altro,     "Ft_Altro_Desc": sanifica(ft_altro_desc),
+                    # Saldo
+                    "Saldo_Iniziale": saldo_iniziale,
+                    "Pag1": pag1, "Note_Pag1": sanifica(note_pag1),
+                    "Pag2": pag2, "Note_Pag2": sanifica(note_pag2),
+                    "Pag3": pag3, "Note_Pag3": sanifica(note_pag3),
+                    "Versamento_Banca": versamento,
+                    "Prelievo_Admin":   prelievo,
+                }
+                dati = calcola_quadratura(inp)
+
+                with st.spinner("Salvataggio e generazione PDF in corso..."):
+                    try:
+                        # Salva nel Google Sheet
+                        ws  = get_or_create_quadrature_sheet()
+                        riga = [dati.get(col, "") for col in QUADRATURE_HEADERS]
+                        ok = _retry(ws.append_row, riga)
+
+                        if ok:
+                            # Genera PDF
+                            pdf_bytes = genera_pdf_quadratura(dati)
+                            nome_file = (
+                                f"{sede.replace(' ', '_')}_"
+                                f"{data_q.strftime('%d-%m-%Y')}.pdf"
+                            )
+
+                            st.success("✅ Dati salvati correttamente!")
+
+                            if pdf_bytes:
+                                st.download_button(
+                                    "📥 Scarica PDF Quadratura",
+                                    pdf_bytes, nome_file,
+                                    "application/pdf",
+                                    use_container_width=True
+                                )
+
+                            # Reset form
+                            st.session_state.qfid += 1
+                            # Rimuovi saldo cached per forzare ricarico
+                            chiave_saldo = f"saldo_init_loaded_{sede}_{qfid}"
+                            if chiave_saldo in st.session_state:
+                                del st.session_state[chiave_saldo]
+                        else:
+                            st.error("❌ Salvataggio fallito. Riprova.")
+                    except Exception as e:
+                        logger.error("Errore salvataggio quadratura: %s", e)
+                        st.error(f"Errore: {e}")
 
 
 # ===========================================================================
@@ -317,8 +772,18 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
 # ===========================================================================
 check_auth()
 
+# Inizializza navigazione
+if "pagina" not in st.session_state:
+    st.session_state.pagina = "home"
+
+# ── ROUTING ────────────────────────────────────────────────────────────────
+if st.session_state.pagina in ("quad_Prati", "quad_Corso Trieste"):
+    sede_attiva = "Prati" if st.session_state.pagina == "quad_Prati" else "Corso Trieste"
+    render_form_quadratura(sede_attiva)
+    st.stop()
+
+# ── HOME PAGE ──────────────────────────────────────────────────────────────
 try:
-    # fetch_all_data ora rilancia l'eccezione → la gestiamo qui fuori
     try:
         dati_raw = fetch_all_data(ID_FOGLIO)
     except Exception as e:
@@ -326,10 +791,9 @@ try:
         st.error(f"Impossibile caricare i dati dal foglio: {e}")
         st.stop()
 
-    # DataFrame normalizzato costruito una volta sola per rerun
     df_norm = get_df_normalizzato(dati_raw)
 
-    # ── 1. LOGO ────────────────────────────────────────────────────────────
+    # ── 1. LOGO ──────────────────────────────────────────────────────────
     _, c_c, _ = st.columns([1, 2, 1])
     with c_c:
         if os.path.exists("logo.png"):
@@ -337,7 +801,18 @@ try:
         else:
             st.title("AQUATIME")
 
-    # ── 2. RICERCA E REPORT PDF ────────────────────────────────────────────
+    # ── 2. PULSANTI QUADRATURA CASSA ─────────────────────────────────────
+    st.divider()
+    st.subheader("📊 Quadratura Cassa Giornaliera")
+    qc1, qc2 = st.columns(2)
+    if qc1.button("🏛️ Quadratura Prati",        use_container_width=True):
+        st.session_state.pagina = "quad_Prati"
+        st.rerun()
+    if qc2.button("🏛️ Quadratura Corso Trieste", use_container_width=True):
+        st.session_state.pagina = "quad_Corso Trieste"
+        st.rerun()
+
+    # ── 3. RICERCA E REPORT PDF ──────────────────────────────────────────
     st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=True):
         col1, col2 = st.columns(2)
@@ -345,7 +820,6 @@ try:
         c_input = col2.text_input("Filtra Cognome", key="src_c", max_chars=MAX_INPUT_LEN)
 
         if (n_input or c_input) and dati_raw:
-            # regex=False: protegge da input tipo ".*" o "[a-z]+"
             mask = (
                 df_norm["Nome"].astype(str).str.contains(n_input, case=False, na=False, regex=False)
                 & df_norm["Cognome"].astype(str).str.contains(c_input, case=False, na=False, regex=False)
@@ -376,13 +850,7 @@ try:
             else:
                 st.warning("Nessun atleta trovato.")
 
-    # ── 3. NUOVA SESSIONE ──────────────────────────────────────────────────
-    #
-    # Usiamo il workaround form_id invece di st.form perché i campi "Altro..."
-    # richiedono widget condizionali che NON possono apparire dentro st.form
-    # (Streamlit non permette rerun parziale all'interno di un form).
-    # È la soluzione più stabile per questo caso d'uso specifico.
-    # ───────────────────────────────────────────────────────────────────────
+    # ── 4. NUOVA SESSIONE WORKOUT ────────────────────────────────────────
     st.divider()
     st.subheader("📝 Nuova Sessione")
 
@@ -439,7 +907,6 @@ try:
         _, col_btn, _ = st.columns([2, 1, 2])
         if col_btn.button("💾 Salva Sessione", use_container_width=True):
 
-            # ── Validazione ────────────────────────────────────────────────
             errori = []
             if not nome_ins:    errori.append("Nome")
             if not cognome_ins: errori.append("Cognome")
@@ -487,12 +954,12 @@ try:
                             st.success("✅ Sessione salvata correttamente!")
                             st.rerun()
                         else:
-                            st.error("❌ Salvataggio fallito dopo 3 tentativi. Controlla la connessione e riprova.")
+                            st.error("❌ Salvataggio fallito dopo 3 tentativi.")
                     except Exception as e:
                         logger.error("Errore salvataggio: %s", e)
                         st.error(f"Errore durante il salvataggio: {e}")
 
-    # ── 4. ARCHIVIO RECENTE E CANCELLAZIONE ───────────────────────────────
+    # ── 5. ARCHIVIO RECENTE E CANCELLAZIONE ─────────────────────────────
     st.divider()
     st.subheader("📊 Archivio Recente (30gg)")
 
@@ -527,7 +994,6 @@ try:
                         key="sel_cancella"
                     )
 
-                    # ── Doppia conferma prima di cancellare ─────────────────
                     if scelta_idx is not None:
                         scelta = opzioni[scelta_idx]
                         st.warning(
@@ -545,7 +1011,7 @@ try:
                                     st.cache_data.clear()
                                     st.rerun()
                                 else:
-                                    st.error("❌ Eliminazione fallita. Riprova tra qualche istante.")
+                                    st.error("❌ Eliminazione fallita.")
                         if col_no.button("❌ Annulla", use_container_width=True):
                             del st.session_state["sel_cancella"]
                             st.rerun()
