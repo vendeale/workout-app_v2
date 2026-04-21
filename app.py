@@ -62,6 +62,10 @@ QUADRATURE_HEADERS = [
     "Tot_Fatture",
     # Totale generale
     "Tot_Generale",
+    # Sospeso e riconciliazione Booker
+    "Sospeso", "Sospeso_Booker",
+    # Altri servizi/fatture
+    "AS_Altro", "AS_Aquatime", "AS_Totale",
     # Saldo cassa
     "Saldo_Iniziale", "Incasso_Contanti",
     "Pag1", "Note_Pag1", "Pag2", "Note_Pag2", "Pag3", "Note_Pag3",
@@ -276,6 +280,12 @@ def calcola_quadratura(inp: dict) -> dict:
     ]), 2)
 
     d["Tot_Generale"] = round(d["Tot_Scontrini"] + d["Tot_Fatture"], 2)
+
+    # O15 = F15+K15 = Tot_Generale + Sospeso
+    d["Sospeso_Booker"] = round(d["Tot_Generale"] + d.get("Sospeso", 0.0), 2)
+
+    # E52 = A52+C52 → Totale Altri Servizi
+    d["AS_Totale"] = round(d.get("AS_Altro", 0.0) + d.get("AS_Aquatime", 0.0), 2)
 
     # Incasso contanti = contanti scontrini + contanti fatture (cella I60 = G25+G33)
     d["Incasso_Contanti"] = round(
@@ -506,7 +516,66 @@ def genera_pdf_quadratura(d: dict) -> bytes | None:
         pdf.cell(130, 8, "TOTALE GENERALE (Scontrini + Fatture)", 1, 0, "L", True)
         pdf.cell(PW - 130, 8, _fmt(d["Tot_Generale"]), 1, 1, "R", True)
         pdf.set_text_color(*BLACK)
-        y_cur = pdf.get_y() + 5
+        y_cur = pdf.get_y() + 3
+
+        # ── SOSPESO E RICONCILIAZIONE BOOKER ───────────────────────────────
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*LGRAY)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(PW, 5, "RICONCILIAZIONE BOOKER", 1, 1, "C", True)
+        y_cur = pdf.get_y()
+
+        LW2 = 130
+        VW2 = PW - LW2
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*WHITE)
+        pdf.set_font("helvetica", "", 8)
+        pdf.cell(LW2, 6, "Totale Booker (= Totale Generale)", 1, 0, "L", False)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(VW2, 6, _fmt(d["Tot_Generale"]), 1, 1, "R", False)
+        y_cur = pdf.get_y()
+
+        pdf.set_xy(LM, y_cur)
+        pdf.set_font("helvetica", "", 8)
+        pdf.cell(LW2, 6, "Sospeso (K15)", 1, 0, "L", False)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(VW2, 6, _fmt(d.get("Sospeso", 0.0)), 1, 1, "R", False)
+        y_cur = pdf.get_y()
+
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*LGRAY)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(LW2, 6, "Sospeso + Totale Booker (O15)", 1, 0, "L", True)
+        pdf.cell(VW2, 6, _fmt(d["Sospeso_Booker"]), 1, 1, "R", True)
+        pdf.set_text_color(*BLACK)
+        y_cur = pdf.get_y() + 3
+
+        # ── ALTRI SERVIZI / FATTURE ─────────────────────────────────────────
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*LGRAY)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(PW, 5, "ALTRI SERVIZI / FATTURE", 1, 1, "C", True)
+        y_cur = pdf.get_y()
+
+        as_col = PW / 3
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*BLUE)
+        pdf.set_text_color(*WHITE)
+        pdf.set_font("helvetica", "B", 7)
+        pdf.cell(as_col, 5.5, "ALTRO", 1, 0, "C", True)
+        pdf.cell(as_col, 5.5, "AQUATIME", 1, 0, "C", True)
+        pdf.cell(as_col, 5.5, "TOTALE", 1, 1, "C", True)
+        pdf.set_text_color(*BLACK)
+        y_cur = pdf.get_y()
+
+        pdf.set_xy(LM, y_cur)
+        pdf.set_fill_color(*WHITE)
+        pdf.set_font("helvetica", "", 8)
+        pdf.cell(as_col, 6, _fmt(d.get("AS_Altro", 0.0)),   1, 0, "C", False)
+        pdf.cell(as_col, 6, _fmt(d.get("AS_Aquatime", 0.0)),1, 0, "C", False)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.cell(as_col, 6, _fmt(d.get("AS_Totale", 0.0)),  1, 1, "C", False)
+        y_cur = pdf.get_y() + 3
 
         # ── SALDO CASSA CONTANTI ───────────────────────────────────────────
         pdf.set_xy(LM, y_cur)
@@ -646,6 +715,34 @@ def render_form_quadratura(sede: str) -> None:
 
         st.divider()
 
+        # ── SOSPESO E RICONCILIAZIONE BOOKER ─────────────────────────────
+        st.markdown("**🔄 Riconciliazione Booker**")
+        tot_gen_live = round(tot_sc + tot_ft, 2)
+        rb1, rb2 = st.columns(2)
+        sospeso = rb1.number_input(
+            "Sospeso (K15)",
+            min_value=0.0, step=0.01, key=f"q_sosp_{qfid}",
+            help="Pagamenti sospesi/differiti da riconciliare con il sistema Booker"
+        )
+        sospeso_booker = round(tot_gen_live + sospeso, 2)
+        rb2.metric(
+            "Sospeso + Totale Booker (O15)",
+            _fmt(sospeso_booker),
+            help="Calcolato: Totale Generale + Sospeso (formula O15 = F15+K15)"
+        )
+
+        st.divider()
+
+        # ── ALTRI SERVIZI / FATTURE ───────────────────────────────────────
+        st.markdown("**🛎️ Altri Servizi / Fatture**")
+        as1, as2, as3 = st.columns(3)
+        as_altro    = as1.number_input("Altro",    min_value=0.0, step=0.01, key=f"q_asa_{qfid}")
+        as_aquatime = as2.number_input("Aquatime", min_value=0.0, step=0.01, key=f"q_asq_{qfid}")
+        as_totale   = round(as_altro + as_aquatime, 2)
+        as3.metric("Totale Altri Servizi", _fmt(as_totale))
+
+        st.divider()
+
         # ── SALDO CASSA CONTANTI ──────────────────────────────────────────
         st.markdown("**💵 Saldo Cassa Contanti**")
 
@@ -719,6 +816,11 @@ def render_form_quadratura(sede: str) -> None:
                     "Ft_Groupon":    ft_groupon,   "Ft_Fitprime": ft_fitprime,
                     "Ft_Amex":       ft_amex,      "Ft_Aquatime": ft_aquatime,
                     "Ft_Altro":      ft_altro,     "Ft_Altro_Desc": sanifica(ft_altro_desc),
+                    # Sospeso
+                    "Sospeso":       sospeso,
+                    # Altri servizi
+                    "AS_Altro":      as_altro,
+                    "AS_Aquatime":   as_aquatime,
                     # Saldo
                     "Saldo_Iniziale": saldo_iniziale,
                     "Pag1": pag1, "Note_Pag1": sanifica(note_pag1),
