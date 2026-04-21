@@ -410,7 +410,7 @@ def genera_pdf_quadratura(d: dict) -> bytes | None:
         pdf.set_text_color(*WHITE)
         pdf.set_font("helvetica", "B", 14)
         pdf.set_xy(LM, 3)
-        pdf.cell(PW, 7, "AQUATIME ROMA — QUADRATURA CASSA GIORNALIERA", align="C")
+        pdf.cell(PW, 7, "AQUATIME ROMA - QUADRATURA CASSA GIORNALIERA", align="C")
         pdf.set_font("helvetica", "B", 11)
         pdf.set_xy(LM, 11)
         pdf.cell(PW, 5, f"SEDE: {d.get('Sede','').upper()}", align="C")
@@ -536,9 +536,9 @@ def genera_pdf_quadratura(d: dict) -> bytes | None:
 
         saldo_row("Saldo Iniziale Cassa Contanti",         d.get("Saldo_Iniziale",    0.0), fill_color=LGRAY)
         saldo_row("(+) Incasso Contanti del giorno",       d.get("Incasso_Contanti",  0.0))
-        note1 = f"(-) Pagamento 1 — {d.get('Note_Pag1','')[:30]}" if d.get("Note_Pag1") else "(-) Pagamento 1"
-        note2 = f"(-) Pagamento 2 — {d.get('Note_Pag2','')[:30]}" if d.get("Note_Pag2") else "(-) Pagamento 2"
-        note3 = f"(-) Pagamento 3 — {d.get('Note_Pag3','')[:30]}" if d.get("Note_Pag3") else "(-) Pagamento 3"
+        note1 = f"(-) Pagamento 1 - {d.get('Note_Pag1','')[:30]}" if d.get("Note_Pag1") else "(-) Pagamento 1"
+        note2 = f"(-) Pagamento 2 - {d.get('Note_Pag2','')[:30]}" if d.get("Note_Pag2") else "(-) Pagamento 2"
+        note3 = f"(-) Pagamento 3 - {d.get('Note_Pag3','')[:30]}" if d.get("Note_Pag3") else "(-) Pagamento 3"
         saldo_row(note1,                                   d.get("Pag1",              0.0))
         saldo_row(note2,                                   d.get("Pag2",              0.0))
         saldo_row(note3,                                   d.get("Pag3",              0.0))
