@@ -306,6 +306,11 @@ def calcola_quadratura(inp: dict) -> dict:
     return d
 
 
+def _nv(val) -> float:
+    """Converte None (campo vuoto) in 0.0 per i calcoli live nel form."""
+    return 0.0 if val is None else float(val)
+
+
 def _fmt(val) -> str:
     """Formatta un valore numerico come stringa Euro per il PDF."""
     try:
@@ -661,31 +666,42 @@ def render_form_quadratura(sede: str) -> None:
         c1, c2 = st.columns(2)
         data_q   = c1.date_input("Data *", value=datetime.today(), format="DD/MM/YYYY",
                                  key=f"qdata_{qfid}")
-        operatore = c2.text_input("Operatore (Nome Cognome) *", key=f"qop_{qfid}",
-                                  max_chars=MAX_INPUT_LEN)
+        OPERATORI = [
+            "Barbara Iorio", "Barbara Pasqualini", "Daniela Bissieres",
+            "Jacopo Vendetti", "Stefano Lampis", "Sofia Amore",
+            "Gianluca Nania", "Altro..."
+        ]
+        op_sel = c2.selectbox("Operatore *", OPERATORI, index=None,
+                              placeholder="Scegli operatore...", key=f"qop_sel_{qfid}")
+        operatore = ""
+        if op_sel == "Altro...":
+            operatore = st.text_input("Specificare operatore *",
+                                      key=f"qop_txt_{qfid}", max_chars=MAX_INPUT_LEN)
+        elif op_sel:
+            operatore = op_sel
 
         st.divider()
 
         # ── SCONTRINI FISCALI ─────────────────────────────────────────────
         st.markdown("**🧾 Scontrini Fiscali**")
         cs1, cs2, cs3, cs4, cs5 = st.columns(5)
-        sc_bancomat  = cs1.number_input("Bancomat",   min_value=0.0, step=0.01, key=f"sc_bk_{qfid}")
-        sc_visa      = cs2.number_input("Visa",       min_value=0.0, step=0.01, key=f"sc_vs_{qfid}")
-        sc_master    = cs3.number_input("Mastercard", min_value=0.0, step=0.01, key=f"sc_mc_{qfid}")
-        sc_contanti  = cs4.number_input("Contanti",   min_value=0.0, step=0.01, key=f"sc_ct_{qfid}")
-        sc_bonifico  = cs5.number_input("Bonifico",   min_value=0.0, step=0.01, key=f"sc_bn_{qfid}")
+        sc_bancomat  = cs1.number_input("Bancomat",   min_value=0.0, step=0.01, value=None, key=f"sc_bk_{qfid}")
+        sc_visa      = cs2.number_input("Visa",       min_value=0.0, step=0.01, value=None, key=f"sc_vs_{qfid}")
+        sc_master    = cs3.number_input("Mastercard", min_value=0.0, step=0.01, value=None, key=f"sc_mc_{qfid}")
+        sc_contanti  = cs4.number_input("Contanti",   min_value=0.0, step=0.01, value=None, key=f"sc_ct_{qfid}")
+        sc_bonifico  = cs5.number_input("Bonifico",   min_value=0.0, step=0.01, value=None, key=f"sc_bn_{qfid}")
 
         cs6, cs7, cs8, cs9, cs10 = st.columns(5)
-        sc_assegno   = cs6.number_input("Assegno",   min_value=0.0, step=0.01, key=f"sc_as_{qfid}")
-        sc_groupon   = cs7.number_input("Groupon",   min_value=0.0, step=0.01, key=f"sc_gp_{qfid}")
-        sc_gympass   = cs8.number_input("Gympass",   min_value=0.0, step=0.01, key=f"sc_gym_{qfid}")
-        sc_amex      = cs9.number_input("Amex",      min_value=0.0, step=0.01, key=f"sc_amx_{qfid}")
-        sc_altro     = cs10.number_input("Altro",    min_value=0.0, step=0.01, key=f"sc_alt_{qfid}")
+        sc_assegno   = cs6.number_input("Assegno",   min_value=0.0, step=0.01, value=None, key=f"sc_as_{qfid}")
+        sc_groupon   = cs7.number_input("Groupon",   min_value=0.0, step=0.01, value=None, key=f"sc_gp_{qfid}")
+        sc_gympass   = cs8.number_input("Gympass",   min_value=0.0, step=0.01, value=None, key=f"sc_gym_{qfid}")
+        sc_amex      = cs9.number_input("Amex",      min_value=0.0, step=0.01, value=None, key=f"sc_amx_{qfid}")
+        sc_altro     = cs10.number_input("Altro",    min_value=0.0, step=0.01, value=None, key=f"sc_alt_{qfid}")
         sc_altro_desc = st.text_input("Specificare Altro Scontrini",
                                       key=f"sc_altd_{qfid}", max_chars=50)
 
-        tot_sc = round(sc_bancomat+sc_visa+sc_master+sc_contanti+sc_bonifico+
-                       sc_assegno+sc_groupon+sc_gympass+sc_amex+sc_altro, 2)
+        tot_sc = round(_nv(sc_bancomat)+_nv(sc_visa)+_nv(sc_master)+_nv(sc_contanti)+_nv(sc_bonifico)+
+                       _nv(sc_assegno)+_nv(sc_groupon)+_nv(sc_gympass)+_nv(sc_amex)+_nv(sc_altro), 2)
         st.info(f"**Totale Scontrini: {_fmt(tot_sc)}**")
 
         st.divider()
@@ -693,24 +709,24 @@ def render_form_quadratura(sede: str) -> None:
         # ── FATTURE ───────────────────────────────────────────────────────
         st.markdown("**📄 Fatture**")
         cf1, cf2, cf3, cf4, cf5 = st.columns(5)
-        ft_bancomat  = cf1.number_input("Bancomat",    min_value=0.0, step=0.01, key=f"ft_bk_{qfid}")
-        ft_visa      = cf2.number_input("Visa",        min_value=0.0, step=0.01, key=f"ft_vs_{qfid}")
-        ft_master    = cf3.number_input("Mastercard",  min_value=0.0, step=0.01, key=f"ft_mc_{qfid}")
-        ft_contanti  = cf4.number_input("Contanti",    min_value=0.0, step=0.01, key=f"ft_ct_{qfid}")
-        ft_bonifico  = cf5.number_input("Bonifico",    min_value=0.0, step=0.01, key=f"ft_bn_{qfid}")
+        ft_bancomat  = cf1.number_input("Bancomat",    min_value=0.0, step=0.01, value=None, key=f"ft_bk_{qfid}")
+        ft_visa      = cf2.number_input("Visa",        min_value=0.0, step=0.01, value=None, key=f"ft_vs_{qfid}")
+        ft_master    = cf3.number_input("Mastercard",  min_value=0.0, step=0.01, value=None, key=f"ft_mc_{qfid}")
+        ft_contanti  = cf4.number_input("Contanti",    min_value=0.0, step=0.01, value=None, key=f"ft_ct_{qfid}")
+        ft_bonifico  = cf5.number_input("Bonifico",    min_value=0.0, step=0.01, value=None, key=f"ft_bn_{qfid}")
 
         cf6, cf7, cf8, cf9, cf10, cf11 = st.columns(6)
-        ft_assegno   = cf6.number_input("Assegno",    min_value=0.0, step=0.01, key=f"ft_as_{qfid}")
-        ft_groupon   = cf7.number_input("Groupon",    min_value=0.0, step=0.01, key=f"ft_gp_{qfid}")
-        ft_fitprime  = cf8.number_input("Fitprime",   min_value=0.0, step=0.01, key=f"ft_fp_{qfid}")
-        ft_amex      = cf9.number_input("Amex",       min_value=0.0, step=0.01, key=f"ft_amx_{qfid}")
-        ft_aquatime  = cf10.number_input("Aquatime",  min_value=0.0, step=0.01, key=f"ft_aq_{qfid}")
-        ft_altro     = cf11.number_input("Altro",     min_value=0.0, step=0.01, key=f"ft_alt_{qfid}")
+        ft_assegno   = cf6.number_input("Assegno",    min_value=0.0, step=0.01, value=None, key=f"ft_as_{qfid}")
+        ft_groupon   = cf7.number_input("Groupon",    min_value=0.0, step=0.01, value=None, key=f"ft_gp_{qfid}")
+        ft_fitprime  = cf8.number_input("Fitprime",   min_value=0.0, step=0.01, value=None, key=f"ft_fp_{qfid}")
+        ft_amex      = cf9.number_input("Amex",       min_value=0.0, step=0.01, value=None, key=f"ft_amx_{qfid}")
+        ft_aquatime  = cf10.number_input("Aquatime",  min_value=0.0, step=0.01, value=None, key=f"ft_aq_{qfid}")
+        ft_altro     = cf11.number_input("Altro",     min_value=0.0, step=0.01, value=None, key=f"ft_alt_{qfid}")
         ft_altro_desc = st.text_input("Specificare Altro Fatture",
                                       key=f"ft_altd_{qfid}", max_chars=50)
 
-        tot_ft = round(ft_bancomat+ft_visa+ft_master+ft_contanti+ft_bonifico+
-                       ft_assegno+ft_groupon+ft_fitprime+ft_amex+ft_aquatime+ft_altro, 2)
+        tot_ft = round(_nv(ft_bancomat)+_nv(ft_visa)+_nv(ft_master)+_nv(ft_contanti)+_nv(ft_bonifico)+
+                       _nv(ft_assegno)+_nv(ft_groupon)+_nv(ft_fitprime)+_nv(ft_amex)+_nv(ft_aquatime)+_nv(ft_altro), 2)
         st.info(f"**Totale Fatture: {_fmt(tot_ft)}**")
 
         st.divider()
@@ -721,10 +737,10 @@ def render_form_quadratura(sede: str) -> None:
         rb1, rb2 = st.columns(2)
         sospeso = rb1.number_input(
             "Sospeso (K15)",
-            min_value=0.0, step=0.01, key=f"q_sosp_{qfid}",
+            min_value=0.0, step=0.01, value=None, key=f"q_sosp_{qfid}",
             help="Pagamenti sospesi/differiti da riconciliare con il sistema Booker"
         )
-        sospeso_booker = round(tot_gen_live + sospeso, 2)
+        sospeso_booker = round(tot_gen_live + _nv(sospeso), 2)
         rb2.metric(
             "Sospeso + Totale Booker (O15)",
             _fmt(sospeso_booker),
@@ -736,9 +752,9 @@ def render_form_quadratura(sede: str) -> None:
         # ── ALTRI SERVIZI / FATTURE ───────────────────────────────────────
         st.markdown("**🛎️ Altri Servizi / Fatture**")
         as1, as2, as3 = st.columns(3)
-        as_altro    = as1.number_input("Altro",    min_value=0.0, step=0.01, key=f"q_asa_{qfid}")
-        as_aquatime = as2.number_input("Aquatime", min_value=0.0, step=0.01, key=f"q_asq_{qfid}")
-        as_totale   = round(as_altro + as_aquatime, 2)
+        as_altro    = as1.number_input("Altro",    min_value=0.0, step=0.01, value=None, key=f"q_asa_{qfid}")
+        as_aquatime = as2.number_input("Aquatime", min_value=0.0, step=0.01, value=None, key=f"q_asq_{qfid}")
+        as_totale   = round(_nv(as_altro) + _nv(as_aquatime), 2)
         as3.metric("Totale Altri Servizi", _fmt(as_totale))
 
         st.divider()
@@ -755,14 +771,14 @@ def render_form_quadratura(sede: str) -> None:
             help="Pre-compilato con il saldo finale del giorno precedente. Modificabile."
         )
 
-        incasso_contanti = round(sc_contanti + ft_contanti, 2)
+        incasso_contanti = round(_nv(sc_contanti) + _nv(ft_contanti), 2)
         cs_col2.metric("Incasso Contanti del giorno", _fmt(incasso_contanti),
                        help="Calcolato automaticamente: Contanti Scontrini + Contanti Fatture")
 
         cp1, cp2, cp3 = st.columns(3)
-        pag1 = cp1.number_input("Pagamento 1 (€)", min_value=0.0, step=0.01, key=f"q_p1_{qfid}")
-        pag2 = cp2.number_input("Pagamento 2 (€)", min_value=0.0, step=0.01, key=f"q_p2_{qfid}")
-        pag3 = cp3.number_input("Pagamento 3 (€)", min_value=0.0, step=0.01, key=f"q_p3_{qfid}")
+        pag1 = cp1.number_input("Pagamento 1 (€)", min_value=0.0, step=0.01, value=None, key=f"q_p1_{qfid}")
+        pag2 = cp2.number_input("Pagamento 2 (€)", min_value=0.0, step=0.01, value=None, key=f"q_p2_{qfid}")
+        pag3 = cp3.number_input("Pagamento 3 (€)", min_value=0.0, step=0.01, value=None, key=f"q_p3_{qfid}")
 
         cn1, cn2, cn3 = st.columns(3)
         note_pag1 = cn1.text_input("Descrizione Pag. 1", key=f"q_n1_{qfid}", max_chars=50)
@@ -770,14 +786,14 @@ def render_form_quadratura(sede: str) -> None:
         note_pag3 = cn3.text_input("Descrizione Pag. 3", key=f"q_n3_{qfid}", max_chars=50)
 
         cv1, cv2 = st.columns(2)
-        versamento = cv1.number_input("Versamento in Banca (€)", min_value=0.0, step=0.01,
+        versamento = cv1.number_input("Versamento in Banca (€)", min_value=0.0, step=0.01, value=None,
                                       key=f"q_vb_{qfid}")
-        prelievo   = cv2.number_input("Prelievo Amministratore (€)", min_value=0.0, step=0.01,
+        prelievo   = cv2.number_input("Prelievo Amministratore (€)", min_value=0.0, step=0.01, value=None,
                                       key=f"q_pa_{qfid}")
 
         # Riepilogo calcolato in tempo reale
-        saldo_finale = round(saldo_iniziale + incasso_contanti
-                             - pag1 - pag2 - pag3 - versamento - prelievo, 2)
+        saldo_finale = round(_nv(saldo_iniziale) + incasso_contanti
+                             - _nv(pag1) - _nv(pag2) - _nv(pag3) - _nv(versamento) - _nv(prelievo), 2)
         tot_gen      = round(tot_sc + tot_ft, 2)
 
         st.divider()
@@ -791,7 +807,10 @@ def render_form_quadratura(sede: str) -> None:
         if col_btn.button("💾 Salva e genera PDF", use_container_width=True):
 
             errori = []
-            if not operatore: errori.append("Operatore")
+            if not op_sel:
+                errori.append("Operatore (nessuna selezione)")
+            elif op_sel == "Altro..." and not operatore:
+                errori.append("Operatore (hai scelto 'Altro...' ma non hai specificato il nome)")
             if not data_q:    errori.append("Data")
 
             if errori:
@@ -803,31 +822,31 @@ def render_form_quadratura(sede: str) -> None:
                     "Sede":      sede,
                     "Operatore": sanifica(operatore),
                     # Scontrini
-                    "Sc_Bancomat":   sc_bancomat,  "Sc_Visa":     sc_visa,
-                    "Sc_Mastercard": sc_master,    "Sc_Contanti": sc_contanti,
-                    "Sc_Bonifico":   sc_bonifico,  "Sc_Assegno":  sc_assegno,
-                    "Sc_Groupon":    sc_groupon,   "Sc_Gympass":  sc_gympass,
-                    "Sc_Amex":       sc_amex,      "Sc_Altro":    sc_altro,
+                    "Sc_Bancomat":   _nv(sc_bancomat),  "Sc_Visa":     _nv(sc_visa),
+                    "Sc_Mastercard": _nv(sc_master),    "Sc_Contanti": _nv(sc_contanti),
+                    "Sc_Bonifico":   _nv(sc_bonifico),  "Sc_Assegno":  _nv(sc_assegno),
+                    "Sc_Groupon":    _nv(sc_groupon),   "Sc_Gympass":  _nv(sc_gympass),
+                    "Sc_Amex":       _nv(sc_amex),      "Sc_Altro":    _nv(sc_altro),
                     "Sc_Altro_Desc": sanifica(sc_altro_desc),
                     # Fatture
-                    "Ft_Bancomat":   ft_bancomat,  "Ft_Visa":     ft_visa,
-                    "Ft_Mastercard": ft_master,    "Ft_Contanti": ft_contanti,
-                    "Ft_Bonifico":   ft_bonifico,  "Ft_Assegno":  ft_assegno,
-                    "Ft_Groupon":    ft_groupon,   "Ft_Fitprime": ft_fitprime,
-                    "Ft_Amex":       ft_amex,      "Ft_Aquatime": ft_aquatime,
-                    "Ft_Altro":      ft_altro,     "Ft_Altro_Desc": sanifica(ft_altro_desc),
+                    "Ft_Bancomat":   _nv(ft_bancomat),  "Ft_Visa":     _nv(ft_visa),
+                    "Ft_Mastercard": _nv(ft_master),    "Ft_Contanti": _nv(ft_contanti),
+                    "Ft_Bonifico":   _nv(ft_bonifico),  "Ft_Assegno":  _nv(ft_assegno),
+                    "Ft_Groupon":    _nv(ft_groupon),   "Ft_Fitprime": _nv(ft_fitprime),
+                    "Ft_Amex":       _nv(ft_amex),      "Ft_Aquatime": _nv(ft_aquatime),
+                    "Ft_Altro":      _nv(ft_altro),     "Ft_Altro_Desc": sanifica(ft_altro_desc),
                     # Sospeso
-                    "Sospeso":       sospeso,
+                    "Sospeso":       _nv(sospeso),
                     # Altri servizi
-                    "AS_Altro":      as_altro,
-                    "AS_Aquatime":   as_aquatime,
+                    "AS_Altro":      _nv(as_altro),
+                    "AS_Aquatime":   _nv(as_aquatime),
                     # Saldo
-                    "Saldo_Iniziale": saldo_iniziale,
-                    "Pag1": pag1, "Note_Pag1": sanifica(note_pag1),
-                    "Pag2": pag2, "Note_Pag2": sanifica(note_pag2),
-                    "Pag3": pag3, "Note_Pag3": sanifica(note_pag3),
-                    "Versamento_Banca": versamento,
-                    "Prelievo_Admin":   prelievo,
+                    "Saldo_Iniziale": _nv(saldo_iniziale),
+                    "Pag1": _nv(pag1), "Note_Pag1": sanifica(note_pag1),
+                    "Pag2": _nv(pag2), "Note_Pag2": sanifica(note_pag2),
+                    "Pag3": _nv(pag3), "Note_Pag3": sanifica(note_pag3),
+                    "Versamento_Banca": _nv(versamento),
+                    "Prelievo_Admin":   _nv(prelievo),
                 }
                 dati = calcola_quadratura(inp)
 
