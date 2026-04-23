@@ -117,6 +117,12 @@ def get_sheet():
     return get_gspread_client().open_by_key(ID_FOGLIO).sheet1
 
 
+@st.cache_resource(ttl=CLIENT_TTL)
+def get_spreadsheet():
+    """Oggetto spreadsheet cachato — evita di riaprirlo ad ogni chiamata."""
+    return get_gspread_client().open_by_key(ID_FOGLIO)
+
+
 @st.cache_data(ttl=CACHE_TTL)
 def fetch_all_data(id_foglio: str) -> list[dict]:
     client = get_gspread_client()
@@ -136,9 +142,9 @@ def fetch_all_data(id_foglio: str) -> list[dict]:
 def get_or_create_quadrature_sheet() -> gspread.Worksheet:
     """
     Restituisce il tab 'Quadrature'. Se non esiste lo crea con le intestazioni.
-    Non cachato perché ha side-effect (creazione tab).
+    Usa get_spreadsheet() cachato per evitare chiamate API ridondanti.
     """
-    spreadsheet = get_gspread_client().open_by_key(ID_FOGLIO)
+    spreadsheet = get_spreadsheet()
     try:
         ws = spreadsheet.worksheet(QUADRATURE_SHEET_NAME)
         # Verifica che le intestazioni esistano
@@ -158,23 +164,23 @@ def get_or_create_quadrature_sheet() -> gspread.Worksheet:
 def get_last_saldo_iniziale(sede: str) -> float:
     """
     Recupera l'ultimo Saldo_Finale dal tab Quadrature per la sede indicata.
-    Restituisce 0.0 se non ci sono record precedenti.
+    Usa fetch_quadrature_data cachato — nessuna doppia lettura API.
     """
     try:
-        ws = get_or_create_quadrature_sheet()
-        records = ws.get_all_records()
-        records_sede = [r for r in records if str(r.get("Sede", "")).strip() == sede]
-        if records_sede:
-            return force_numeric(records_sede[-1].get("Saldo_Finale", 0))
+        records = fetch_quadrature_data(sede)
+        if records:
+            return force_numeric(records[-1].get("Saldo_Finale", 0))
     except Exception as e:
         logger.error("Errore recupero saldo iniziale: %s", e)
     return 0.0
 
 
+@st.cache_data(ttl=60)
 def fetch_quadrature_data(sede: str) -> list[dict]:
     """
-    Legge tutti i record del tab Quadrature per la sede indicata,
-    aggiungendo SHEET_ROW per la cancellazione.
+    Legge i record del tab Quadrature per la sede indicata.
+    Cachato 60s — breve TTL per bilanciare freschezza e performance.
+    Invalidato esplicitamente dopo ogni scrittura/cancellazione.
     """
     try:
         ws = get_or_create_quadrature_sheet()
@@ -193,12 +199,16 @@ def fetch_quadrature_data(sede: str) -> list[dict]:
 # UTILITY — WORKOUT
 # ---------------------------------------------------------------------------
 def force_numeric(val) -> float:
+    """Converte qualsiasi valore (None, stringa con virgola, numero) in float."""
     if val is None or val == "":
         return 0.0
     try:
         return float(str(val).replace(",", ".").strip())
     except (ValueError, TypeError):
         return 0.0
+
+# Alias breve usato nei calcoli live del form (None → 0.0)
+_nv = force_numeric
 
 
 def normalizza_numerici(df: pd.DataFrame) -> pd.DataFrame:
@@ -326,9 +336,6 @@ def calcola_quadratura(inp: dict) -> dict:
     return d
 
 
-def _nv(val) -> float:
-    """Converte None (campo vuoto) in 0.0 per i calcoli live nel form."""
-    return 0.0 if val is None else float(val)
 
 
 def _fmt(val) -> str:
@@ -337,7 +344,7 @@ def _fmt(val) -> str:
         f = float(val)
         return f"EUR {f:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except (ValueError, TypeError):
-        return "€ 0,00"
+        return "EUR 0,00"
 
 # ---------------------------------------------------------------------------
 # GENERAZIONE PDF — WORKOUT
@@ -356,7 +363,7 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         c_prog = get_exact_col(cols, "PROGRAMMA")
         c_liv  = get_exact_col(cols, "LIVELLO")
 
-        km_vals = df_atleta[c_km].apply(force_numeric)        if c_km  else pd.Series([0.0])
+        km_vals = pd.to_numeric(df_atleta[c_km].astype(str).str.replace(",", ".", regex=False), errors="coerce").fillna(0.0) if c_km else pd.Series([0.0])
         kmh_avg = df_atleta[c_kmh].apply(force_numeric).mean() if c_kmh else 0.0
         cal_avg = df_atleta[c_cal].apply(force_numeric).mean() if c_cal else 0.0
 
@@ -684,6 +691,10 @@ def render_form_quadratura(sede: str) -> None:
     """Pagina quadratura cassa con tab: Nuova / Cerca / Rivedi."""
 
     if st.button("← Torna alla Home"):
+        # Pulisce le chiavi di conferma cancellazione orfane
+        for k in list(st.session_state.keys()):
+            if k.startswith("confirm_del_"):
+                del st.session_state[k]
         st.session_state.pagina = "home"
         st.rerun()
 
@@ -924,6 +935,8 @@ def render_form_quadratura(sede: str) -> None:
                                 chiave_saldo = f"saldo_init_loaded_{sede}_{qfid}"
                                 if chiave_saldo in st.session_state:
                                     del st.session_state[chiave_saldo]
+                                # Invalida cache quadrature per questa sede
+                                fetch_quadrature_data.clear()
                             else:
                                 st.error("❌ Salvataggio fallito. Riprova.")
                         except Exception as e:
@@ -1051,6 +1064,7 @@ def render_form_quadratura(sede: str) -> None:
                                 ok = _retry(ws_del.delete_rows, row_id)
                             if ok:
                                 st.session_state[key_confirm] = False
+                                fetch_quadrature_data.clear()
                                 st.success("✅ Quadratura eliminata.")
                                 st.rerun()
                             else:
@@ -1072,6 +1086,7 @@ if "pagina" not in st.session_state:
 
 # ── ROUTING ────────────────────────────────────────────────────────────────
 if st.session_state.pagina in ("quad_Prati", "quad_Corso Trieste"):
+    check_auth()   # ← verifica auth anche sulle pagine interne
     sede_attiva = "Prati" if st.session_state.pagina == "quad_Prati" else "Corso Trieste"
     render_form_quadratura(sede_attiva)
     st.stop()
@@ -1245,7 +1260,7 @@ try:
                         ]
                         ok = _retry(sheet.append_row, riga)
                         if ok:
-                            st.cache_data.clear()
+                            fetch_all_data.clear()
                             invalida_df_cache()
                             st.session_state.form_id += 1
                             st.success("✅ Sessione salvata correttamente!")
@@ -1305,7 +1320,7 @@ try:
                                 if ok:
                                     del st.session_state["sel_cancella"]
                                     invalida_df_cache()
-                                    st.cache_data.clear()
+                                    fetch_all_data.clear()
                                     st.rerun()
                                 else:
                                     st.error("❌ Eliminazione fallita.")
