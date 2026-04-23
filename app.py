@@ -1025,6 +1025,9 @@ try:
         dist = f9.number_input("Km *",       min_value=0.0, step=0.1, value=None, key=f"dist_{fid}")
         cal  = f10.number_input("Calorie *", min_value=0,  value=None, key=f"cal_{fid}")
 
+        note_ins = st.text_area("Note", key=f"note_{fid}", max_chars=256,
+                               placeholder="Note aggiuntive (max 256 caratteri)...")
+
         _, col_btn, _ = st.columns([2, 1, 2])
         if col_btn.button("💾 Salva Sessione", use_container_width=True):
 
@@ -1065,7 +1068,7 @@ try:
                             sanifica(f_liv),
                             _nv(vel), _nv(dist), _nv(cal),
                             sanifica(sede_ins),
-                            0, 0, 0
+                            0, 0, 0, sanifica(note_ins)
                         ]
                         ok = _retry(sheet.append_row, riga)
                         if ok:
