@@ -1021,9 +1021,9 @@ try:
 
         st.write("---")
         f8, f9, f10 = st.columns(3)
-        vel  = f8.number_input("Km/h *",     min_value=0.0, step=0.1, key=f"v_{fid}")
-        dist = f9.number_input("Km *",       min_value=0.0, step=0.1, key=f"dist_{fid}")
-        cal  = f10.number_input("Calorie *", min_value=0,              key=f"cal_{fid}")
+        vel  = f8.number_input("Km/h *",     min_value=0.0, step=0.1, value=None, key=f"v_{fid}")
+        dist = f9.number_input("Km *",       min_value=0.0, step=0.1, value=None, key=f"dist_{fid}")
+        cal  = f10.number_input("Calorie *", min_value=0,  value=None, key=f"cal_{fid}")
 
         _, col_btn, _ = st.columns([2, 1, 2])
         if col_btn.button("💾 Salva Sessione", use_container_width=True):
@@ -1045,7 +1045,7 @@ try:
                 errori.append("Livello (nessuna selezione)")
             elif liv_sel == "Altro..." and not f_liv:
                 errori.append("Livello (hai scelto 'Altro...' ma non hai specificato il valore)")
-            if vel == 0.0 and dist == 0.0 and cal == 0:
+            if not any([vel, dist, cal]):
                 errori.append("almeno un valore tra Km/h, Km, Calorie deve essere > 0")
 
             if errori:
@@ -1063,7 +1063,7 @@ try:
                             sanifica(f_durata),
                             sanifica(f_prog),
                             sanifica(f_liv),
-                            vel, dist, cal,
+                            _nv(vel), _nv(dist), _nv(cal),
                             sanifica(sede_ins),
                             0, 0, 0
                         ]
