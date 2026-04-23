@@ -358,8 +358,9 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}",      1, 1, "C", True)
         pdf.ln(5)
 
-        col_widths = [25, 45, 40, 20, 20, 25]
-        headers    = ["Data", "Programma", "Livello", "Km", "Km/h", "Calorie"]
+        # Larghezze: 25+40+35+15+15+20+40 = 190mm (entro margini A4)
+        col_widths = [25, 40, 35, 15, 15, 20, 40]
+        headers    = ["Data", "Programma", "Livello", "Km", "Km/h", "Cal.", "Note"]
         pdf.set_font("helvetica", "B", 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -367,6 +368,10 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
             pdf.cell(w, 8, h, 1, 0, "C", True)
         pdf.ln()
 
+        # Trova colonna Note (ricerca esatta o per nome)
+        c_note = next(
+            (c for c in cols if str(c).strip().upper() == "NOTE"), None
+        )
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", "", 8)
         for _, row in df_atleta.iterrows():
@@ -380,12 +385,14 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
                 except ValueError:
                     solo_data = data_str
 
+            note_val = str(row.get(c_note, ""))[:38] if c_note else ""
             pdf.cell(col_widths[0], 7, solo_data,                                    1, 0, "C")
             pdf.cell(col_widths[1], 7, str(row.get(c_prog, ""))[:MAX_PDF_PROG_LEN], 1, 0, "L")
             pdf.cell(col_widths[2], 7, str(row.get(c_liv,  ""))[:MAX_PDF_LIV_LEN],  1, 0, "L")
             pdf.cell(col_widths[3], 7, str(row.get(c_km,   "0")),                   1, 0, "C")
             pdf.cell(col_widths[4], 7, str(row.get(c_kmh,  "0")),                   1, 0, "C")
-            pdf.cell(col_widths[5], 7, str(row.get(c_cal,  "0")),                   1, 1, "C")
+            pdf.cell(col_widths[5], 7, str(row.get(c_cal,  "0")),                   1, 0, "C")
+            pdf.cell(col_widths[6], 7, note_val,                                     1, 1, "L")
 
         out = pdf.output()
         return bytes(out) if isinstance(out, bytearray) else out
