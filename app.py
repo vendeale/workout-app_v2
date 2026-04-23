@@ -653,6 +653,21 @@ def genera_pdf_quadratura(d: dict) -> bytes | None:
         pdf.set_font("helvetica", "B", 10)
         pdf.cell(LW_SALDO, 8, "SALDO FINALE CASSA CONTANTI", 1, 0, "L", True)
         pdf.cell(VW_SALDO, 8, _fmt(d["Saldo_Finale"]), 1, 1, "R", True)
+        y_cur = pdf.get_y() + 4
+
+        # ── NOTE ───────────────────────────────────────────────────────
+        nota = str(d.get("Note", "")).strip()
+        if nota:
+            pdf.set_xy(LM, y_cur)
+            pdf.set_fill_color(*LGRAY)
+            pdf.set_text_color(*BLACK)
+            pdf.set_font("helvetica", "B", 8)
+            pdf.cell(PW, 5, "NOTE", 1, 1, "L", True)
+            y_cur = pdf.get_y()
+            pdf.set_xy(LM, y_cur)
+            pdf.set_fill_color(*WHITE)
+            pdf.set_font("helvetica", "", 8)
+            pdf.multi_cell(PW, 5, nota, border=1, align="L")
 
         out = pdf.output()
         return bytes(out) if isinstance(out, bytearray) else out
