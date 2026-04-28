@@ -728,7 +728,8 @@ def render_form_quadratura(sede: str) -> None:
                                    key=f"qdata_{qfid}")
             OPERATORI = [
                 "Barbara Iorio", "Barbara Pasqualini", "Daniela Bissieres",
-                "Jacopo Vendetti", "Stefano Lampis", "Sofia Amore",
+                "Francesca Ionta", "Jacopo Vendetti", "Raffaele Picinni",
+                "Stefano Lampis", "Sofia Amore",
                 "Gianluca Nania", "Altro..."
             ]
             op_sel = c2.selectbox("Operatore *", OPERATORI, index=None,
