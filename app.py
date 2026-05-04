@@ -746,18 +746,18 @@ def render_form_quadratura(sede: str) -> None:
             # ── SCONTRINI FISCALI ─────────────────────────────────────────
             st.markdown("**🧾 Scontrini Fiscali**")
             cs1, cs2, cs3, cs4, cs5 = st.columns(5)
-            sc_bancomat  = cs1.number_input("Bancomat",   min_value=0.0, step=0.01, value=None, key=f"sc_bk_{qfid}")
-            sc_visa      = cs2.number_input("Visa",       min_value=0.0, step=0.01, value=None, key=f"sc_vs_{qfid}")
-            sc_master    = cs3.number_input("Mastercard", min_value=0.0, step=0.01, value=None, key=f"sc_mc_{qfid}")
-            sc_contanti  = cs4.number_input("Contanti",   min_value=0.0, step=0.01, value=None, key=f"sc_ct_{qfid}")
-            sc_bonifico  = cs5.number_input("Bonifico",   min_value=0.0, step=0.01, value=None, key=f"sc_bn_{qfid}")
+            sc_bancomat  = cs1.text_input("Bancomat",   key=f"sc_bk_{qfid}", placeholder="0.00")
+            sc_visa      = cs2.text_input("Visa",       key=f"sc_vs_{qfid}", placeholder="0.00")
+            sc_master    = cs3.text_input("Mastercard", key=f"sc_mc_{qfid}", placeholder="0.00")
+            sc_contanti  = cs4.text_input("Contanti",   key=f"sc_ct_{qfid}", placeholder="0.00")
+            sc_bonifico  = cs5.text_input("Bonifico",   key=f"sc_bn_{qfid}", placeholder="0.00")
 
             cs6, cs7, cs8, cs9, cs10 = st.columns(5)
-            sc_assegno   = cs6.number_input("Assegno",   min_value=0.0, step=0.01, value=None, key=f"sc_as_{qfid}")
-            sc_groupon   = cs7.number_input("Groupon",   min_value=0.0, step=0.01, value=None, key=f"sc_gp_{qfid}")
-            sc_gympass   = cs8.number_input("Gympass",   min_value=0.0, step=0.01, value=None, key=f"sc_gym_{qfid}")
-            sc_amex      = cs9.number_input("Amex",      min_value=0.0, step=0.01, value=None, key=f"sc_amx_{qfid}")
-            sc_altro     = cs10.number_input("Altro",    min_value=0.0, step=0.01, value=None, key=f"sc_alt_{qfid}")
+            sc_assegno   = cs6.text_input("Assegno",   key=f"sc_as_{qfid}", placeholder="0.00")
+            sc_groupon   = cs7.text_input("Groupon",   key=f"sc_gp_{qfid}", placeholder="0.00")
+            sc_gympass   = cs8.text_input("Gympass",   key=f"sc_gym_{qfid}", placeholder="0.00")
+            sc_amex      = cs9.text_input("Amex",      key=f"sc_amx_{qfid}", placeholder="0.00")
+            sc_altro     = cs10.text_input("Altro",    key=f"sc_alt_{qfid}", placeholder="0.00")
             sc_altro_desc = st.text_input("Specificare Altro Scontrini",
                                           key=f"sc_altd_{qfid}", max_chars=50)
 
@@ -770,19 +770,19 @@ def render_form_quadratura(sede: str) -> None:
             # ── FATTURE ───────────────────────────────────────────────────
             st.markdown("**📄 Fatture**")
             cf1, cf2, cf3, cf4, cf5 = st.columns(5)
-            ft_bancomat  = cf1.number_input("Bancomat",    min_value=0.0, step=0.01, value=None, key=f"ft_bk_{qfid}")
-            ft_visa      = cf2.number_input("Visa",        min_value=0.0, step=0.01, value=None, key=f"ft_vs_{qfid}")
-            ft_master    = cf3.number_input("Mastercard",  min_value=0.0, step=0.01, value=None, key=f"ft_mc_{qfid}")
-            ft_contanti  = cf4.number_input("Contanti",    min_value=0.0, step=0.01, value=None, key=f"ft_ct_{qfid}")
-            ft_bonifico  = cf5.number_input("Bonifico",    min_value=0.0, step=0.01, value=None, key=f"ft_bn_{qfid}")
+            ft_bancomat  = cf1.text_input("Bancomat",    key=f"ft_bk_{qfid}", placeholder="0.00")
+            ft_visa      = cf2.text_input("Visa",        key=f"ft_vs_{qfid}", placeholder="0.00")
+            ft_master    = cf3.text_input("Mastercard",  key=f"ft_mc_{qfid}", placeholder="0.00")
+            ft_contanti  = cf4.text_input("Contanti",    key=f"ft_ct_{qfid}", placeholder="0.00")
+            ft_bonifico  = cf5.text_input("Bonifico",    key=f"ft_bn_{qfid}", placeholder="0.00")
 
             cf6, cf7, cf8, cf9, cf10, cf11 = st.columns(6)
-            ft_assegno   = cf6.number_input("Assegno",    min_value=0.0, step=0.01, value=None, key=f"ft_as_{qfid}")
-            ft_groupon   = cf7.number_input("Groupon",    min_value=0.0, step=0.01, value=None, key=f"ft_gp_{qfid}")
-            ft_fitprime  = cf8.number_input("Fitprime",   min_value=0.0, step=0.01, value=None, key=f"ft_fp_{qfid}")
-            ft_amex      = cf9.number_input("Amex",       min_value=0.0, step=0.01, value=None, key=f"ft_amx_{qfid}")
-            ft_aquatime  = cf10.number_input("Aquatime",  min_value=0.0, step=0.01, value=None, key=f"ft_aq_{qfid}")
-            ft_altro     = cf11.number_input("Altro",     min_value=0.0, step=0.01, value=None, key=f"ft_alt_{qfid}")
+            ft_assegno   = cf6.text_input("Assegno",    key=f"ft_as_{qfid}", placeholder="0.00")
+            ft_groupon   = cf7.text_input("Groupon",    key=f"ft_gp_{qfid}", placeholder="0.00")
+            ft_fitprime  = cf8.text_input("Fitprime",   key=f"ft_fp_{qfid}", placeholder="0.00")
+            ft_amex      = cf9.text_input("Amex",       key=f"ft_amx_{qfid}", placeholder="0.00")
+            ft_aquatime  = cf10.text_input("Aquatime",  key=f"ft_aq_{qfid}", placeholder="0.00")
+            ft_altro     = cf11.text_input("Altro",     key=f"ft_alt_{qfid}", placeholder="0.00")
             ft_altro_desc = st.text_input("Specificare Altro Fatture",
                                           key=f"ft_altd_{qfid}", max_chars=50)
 
@@ -796,9 +796,8 @@ def render_form_quadratura(sede: str) -> None:
             st.markdown("**🔄 Riconciliazione Booker**")
             tot_gen_live = round(tot_sc + tot_ft, 2)
             rb1, rb2 = st.columns(2)
-            sospeso = rb1.number_input(
-                "Sospeso (K15)",
-                min_value=0.0, step=0.01, value=None, key=f"q_sosp_{qfid}",
+            sospeso = rb1.text_input(
+                "Sospeso (K15)", key=f"q_sosp_{qfid}", placeholder="0.00",
                 help="Pagamenti sospesi/differiti da riconciliare con il sistema Booker"
             )
             sospeso_booker = round(tot_gen_live + _nv(sospeso), 2)
@@ -813,8 +812,8 @@ def render_form_quadratura(sede: str) -> None:
             # ── ALTRI SERVIZI / FATTURE ───────────────────────────────────
             st.markdown("**🛎️ Altri Servizi / Fatture**")
             as1, as2, as3 = st.columns(3)
-            as_altro    = as1.number_input("Altro",    min_value=0.0, step=0.01, value=None, key=f"q_asa_{qfid}")
-            as_aquatime = as2.number_input("Aquatime", min_value=0.0, step=0.01, value=None, key=f"q_asq_{qfid}")
+            as_altro    = as1.text_input("Altro",    key=f"q_asa_{qfid}", placeholder="0.00")
+            as_aquatime = as2.text_input("Aquatime", key=f"q_asq_{qfid}", placeholder="0.00")
             as_totale   = round(_nv(as_altro) + _nv(as_aquatime), 2)
             as3.metric("Totale Altri Servizi", _fmt(as_totale))
 
@@ -823,11 +822,11 @@ def render_form_quadratura(sede: str) -> None:
             # ── SALDO CASSA CONTANTI ──────────────────────────────────────
             st.markdown("**💵 Saldo Cassa Contanti**")
             cs_col1, cs_col2 = st.columns(2)
-            saldo_iniziale = cs_col1.number_input(
+            saldo_iniziale = cs_col1.text_input(
                 "Saldo Iniziale Cassa (dal giorno precedente) *",
-                value=float(saldo_precedente),
-                min_value=0.0, step=0.01,
+                value=str(saldo_precedente) if saldo_precedente else "",
                 key=f"q_siniz_{qfid}",
+                placeholder="0.00",
                 help="Pre-compilato con il saldo finale del giorno precedente. Modificabile."
             )
             incasso_contanti = round(_nv(sc_contanti) + _nv(ft_contanti), 2)
@@ -835,9 +834,9 @@ def render_form_quadratura(sede: str) -> None:
                            help="Calcolato automaticamente: Contanti Scontrini + Contanti Fatture")
 
             cp1, cp2, cp3 = st.columns(3)
-            pag1 = cp1.number_input("Pagamento 1 (€)", min_value=0.0, step=0.01, value=None, key=f"q_p1_{qfid}")
-            pag2 = cp2.number_input("Pagamento 2 (€)", min_value=0.0, step=0.01, value=None, key=f"q_p2_{qfid}")
-            pag3 = cp3.number_input("Pagamento 3 (€)", min_value=0.0, step=0.01, value=None, key=f"q_p3_{qfid}")
+            pag1 = cp1.text_input("Pagamento 1 (€)", key=f"q_p1_{qfid}", placeholder="0.00")
+            pag2 = cp2.text_input("Pagamento 2 (€)", key=f"q_p2_{qfid}", placeholder="0.00")
+            pag3 = cp3.text_input("Pagamento 3 (€)", key=f"q_p3_{qfid}", placeholder="0.00")
 
             cn1, cn2, cn3 = st.columns(3)
             note_pag1 = cn1.text_input("Descrizione Pag. 1", key=f"q_n1_{qfid}", max_chars=50)
@@ -845,10 +844,8 @@ def render_form_quadratura(sede: str) -> None:
             note_pag3 = cn3.text_input("Descrizione Pag. 3", key=f"q_n3_{qfid}", max_chars=50)
 
             cv1, cv2 = st.columns(2)
-            versamento = cv1.number_input("Versamento in Banca (€)", min_value=0.0, step=0.01, value=None,
-                                          key=f"q_vb_{qfid}")
-            prelievo   = cv2.number_input("Prelievo Amministratore (€)", min_value=0.0, step=0.01, value=None,
-                                          key=f"q_pa_{qfid}")
+            versamento = cv1.text_input("Versamento in Banca (€)", key=f"q_vb_{qfid}", placeholder="0.00")
+            prelievo   = cv2.text_input("Prelievo Amministratore (€)", key=f"q_pa_{qfid}", placeholder="0.00")
 
             saldo_finale = round(_nv(saldo_iniziale) + incasso_contanti
                                  - _nv(pag1) - _nv(pag2) - _nv(pag3)
