@@ -1210,9 +1210,12 @@ try:
 
         st.write("---")
         f8, f9, f10 = st.columns(3)
-        vel  = f8.number_input("Km/h *",     min_value=0.0, step=0.1, value=None, key=f"v_{fid}")
-        dist = f9.number_input("Km *",       min_value=0.0, step=0.1, value=None, key=f"dist_{fid}")
-        cal  = f10.number_input("Calorie *", min_value=0,  value=None, key=f"cal_{fid}")
+        vel_str  = f8.text_input("Km/h *",    key=f"v_{fid}",    placeholder="es. 18.5")
+        dist_str = f9.text_input("Km *",      key=f"dist_{fid}", placeholder="es. 12.3")
+        cal_str  = f10.text_input("Calorie *",key=f"cal_{fid}",  placeholder="es. 450")
+        vel  = force_numeric(vel_str)  if vel_str.strip()  else None
+        dist = force_numeric(dist_str) if dist_str.strip() else None
+        cal  = force_numeric(cal_str)  if cal_str.strip()  else None
 
         note_ins = st.text_area("Note", key=f"note_{fid}", max_chars=256,
                                placeholder="Note aggiuntive (max 256 caratteri)...")
