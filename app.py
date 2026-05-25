@@ -763,11 +763,6 @@ def render_form_quadratura(sede: str) -> None:
             sc_altro_desc = st.text_input("Specificare Altro Scontrini",
                                           key=f"sc_altd_{qfid}", max_chars=50)
 
-            # Normalizza None → "" per sicurezza (text_input può restituire None)
-            sc_bancomat,sc_visa,sc_master,sc_contanti,sc_bonifico = (
-                sc_bancomat or""),(sc_visa or""),(sc_master or""),(sc_contanti or""),(sc_bonifico or"")
-            sc_assegno,sc_groupon,sc_gympass,sc_amex,sc_altro = (
-                sc_assegno or""),(sc_groupon or""),(sc_gympass or""),(sc_amex or""),(sc_altro or"")
             tot_sc = round(_nv(sc_bancomat)+_nv(sc_visa)+_nv(sc_master)+_nv(sc_contanti)+_nv(sc_bonifico)+
                            _nv(sc_assegno)+_nv(sc_groupon)+_nv(sc_gympass)+_nv(sc_amex)+_nv(sc_altro), 2)
             st.info(f"**Totale Scontrini: {_fmt(tot_sc)}**")
@@ -793,11 +788,6 @@ def render_form_quadratura(sede: str) -> None:
             ft_altro_desc = st.text_input("Specificare Altro Fatture",
                                           key=f"ft_altd_{qfid}", max_chars=50)
 
-            # Normalizza None → "" per sicurezza
-            ft_bancomat,ft_visa,ft_master,ft_contanti,ft_bonifico = (
-                ft_bancomat or""),(ft_visa or""),(ft_master or""),(ft_contanti or""),(ft_bonifico or"")
-            ft_assegno,ft_groupon,ft_fitprime,ft_amex,ft_aquatime,ft_altro = (
-                ft_assegno or""),(ft_groupon or""),(ft_fitprime or""),(ft_amex or""),(ft_aquatime or""),(ft_altro or"")
             tot_ft = round(_nv(ft_bancomat)+_nv(ft_visa)+_nv(ft_master)+_nv(ft_contanti)+_nv(ft_bonifico)+
                            _nv(ft_assegno)+_nv(ft_groupon)+_nv(ft_fitprime)+_nv(ft_amex)+_nv(ft_aquatime)+_nv(ft_altro), 2)
             st.info(f"**Totale Fatture: {_fmt(tot_ft)}**")
@@ -812,7 +802,6 @@ def render_form_quadratura(sede: str) -> None:
                 "Sospeso (K15)", key=f"q_sosp_{qfid}", placeholder="0.00",
                 help="Pagamenti sospesi/differiti da riconciliare con il sistema Booker"
             )
-            sospeso = sospeso or ""
             sospeso_booker = round(tot_gen_live + _nv(sospeso), 2)
             rb2.metric(
                 "Sospeso + Totale Booker (O15)",
@@ -827,7 +816,6 @@ def render_form_quadratura(sede: str) -> None:
             as1, as2, as3 = st.columns(3)
             as_altro    = as1.text_input("Altro",    key=f"q_asa_{qfid}", placeholder="0.00")
             as_aquatime = as2.text_input("Aquatime", key=f"q_asq_{qfid}", placeholder="0.00")
-            as_altro, as_aquatime = (as_altro or ""), (as_aquatime or "")
             as_totale   = round(_nv(as_altro) + _nv(as_aquatime), 2)
             as3.metric("Totale Altri Servizi", _fmt(as_totale))
 
@@ -843,9 +831,6 @@ def render_form_quadratura(sede: str) -> None:
                 placeholder="0.00",
                 help="Pre-compilato con il saldo finale del giorno precedente. Modificabile."
             )
-            saldo_iniziale = saldo_iniziale or ""
-            pag1, pag2, pag3 = (pag1 or ""), (pag2 or ""), (pag3 or "")
-            versamento, prelievo = (versamento or ""), (prelievo or "")
             incasso_contanti = round(_nv(sc_contanti) + _nv(ft_contanti), 2)
             cs_col2.metric("Incasso Contanti del giorno", _fmt(incasso_contanti),
                            help="Calcolato automaticamente: Contanti Scontrini + Contanti Fatture")
