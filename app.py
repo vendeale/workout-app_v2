@@ -42,6 +42,7 @@ COL_KEYWORDS: dict = {
     "CALORIE":   lambda c: "CAL" in c or "KCAL" in c,
     "PROGRAMMA": lambda c: "PROGR" in c,
     "LIVELLO":   lambda c: "LIV" in c,
+    "TEMP":      lambda c: "TEMP" in c,
 }
 
 # ---------------------------------------------------------------------------
@@ -387,9 +388,9 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}",      1, 1, "C", True)
         pdf.ln(5)
 
-        # Larghezze: 25+40+35+15+15+20+40 = 190mm (entro margini A4)
-        col_widths = [25, 40, 35, 15, 15, 20, 40]
-        headers    = ["Data", "Programma", "Livello", "Km", "Km/h", "Cal.", "Note"]
+        # Larghezze: 22+35+30+13+13+17+15+35 = 180mm (entro margini A4)
+        col_widths = [22, 35, 30, 13, 13, 17, 15, 35]
+        headers    = ["Data", "Programma", "Livello", "Km", "Km/h", "Cal.", "T.C", "Note"]
         pdf.set_font("helvetica", "B", 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -397,10 +398,11 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
             pdf.cell(w, 8, h, 1, 0, "C", True)
         pdf.ln()
 
-        # Trova colonna Note (ricerca esatta o per nome)
+        # Trova colonne Note e Temperatura
         c_note = next(
             (c for c in cols if str(c).strip().upper() == "NOTE"), None
         )
+        c_temp = get_exact_col(cols, "TEMP")
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", "", 8)
         for _, row in df_atleta.iterrows():
@@ -414,14 +416,16 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
                 except ValueError:
                     solo_data = data_str
 
-            note_val = str(row.get(c_note, ""))[:38] if c_note else ""
+            note_val = str(row.get(c_note, ""))[:32] if c_note else ""
+            temp_val = str(row.get(c_temp, "")) if c_temp else ""
             pdf.cell(col_widths[0], 7, solo_data,                                    1, 0, "C")
             pdf.cell(col_widths[1], 7, str(row.get(c_prog, ""))[:MAX_PDF_PROG_LEN], 1, 0, "L")
             pdf.cell(col_widths[2], 7, str(row.get(c_liv,  ""))[:MAX_PDF_LIV_LEN],  1, 0, "L")
             pdf.cell(col_widths[3], 7, str(row.get(c_km,   "0")),                   1, 0, "C")
             pdf.cell(col_widths[4], 7, str(row.get(c_kmh,  "0")),                   1, 0, "C")
             pdf.cell(col_widths[5], 7, str(row.get(c_cal,  "0")),                   1, 0, "C")
-            pdf.cell(col_widths[6], 7, note_val,                                     1, 1, "L")
+            pdf.cell(col_widths[6], 7, temp_val,                                     1, 0, "C")
+            pdf.cell(col_widths[7], 7, note_val,                                     1, 1, "L")
 
         out = pdf.output()
         return bytes(out) if isinstance(out, bytearray) else out
@@ -1208,13 +1212,15 @@ try:
         ) if liv_sel == "Altro..." else liv_sel
 
         st.write("---")
-        f8, f9, f10 = st.columns(3)
-        vel_str  = f8.text_input("Km/h *",    key=f"v_{fid}",    placeholder="es. 18.5")
-        dist_str = f9.text_input("Km *",      key=f"dist_{fid}", placeholder="es. 12.3")
-        cal_str  = f10.text_input("Calorie *",key=f"cal_{fid}",  placeholder="es. 450")
+        f8, f9, f10, f11 = st.columns(4)
+        vel_str  = f8.text_input("Km/h *",             key=f"v_{fid}",    placeholder="es. 18.5")
+        dist_str = f9.text_input("Km *",               key=f"dist_{fid}", placeholder="es. 12.3")
+        cal_str  = f10.text_input("Calorie *",         key=f"cal_{fid}",  placeholder="es. 450")
+        temp_str = f11.text_input("Temp. Acqua (°C)", key=f"temp_{fid}", placeholder="es. 28")
         vel  = force_numeric(vel_str)  if (vel_str or "").strip()  else None
         dist = force_numeric(dist_str) if (dist_str or "").strip() else None
         cal  = force_numeric(cal_str)  if (cal_str or "").strip()  else None
+        temp = force_numeric(temp_str) if (temp_str or "").strip() else None
 
         note_ins = st.text_area("Note", key=f"note_{fid}", max_chars=256,
                                placeholder="Note aggiuntive (max 256 caratteri)...")
@@ -1241,6 +1247,8 @@ try:
                 errori.append("Livello (hai scelto 'Altro...' ma non hai specificato il valore)")
             if not any([vel, dist, cal]):
                 errori.append("almeno un valore tra Km/h, Km, Calorie deve essere > 0")
+            if temp is None:
+                errori.append("Temperatura Acqua (°C)")
 
             if errori:
                 st.error(f"Compila i campi obbligatori: {', '.join(errori)}")
@@ -1259,7 +1267,7 @@ try:
                             sanifica(f_liv),
                             _nv(vel), _nv(dist), _nv(cal),
                             sanifica(sede_ins),
-                            0, 0, 0, sanifica(note_ins)
+                            0, 0, 0, _nv(temp), sanifica(note_ins)
                         ]
                         ok = _retry(sheet.append_row, riga)
                         if ok:
