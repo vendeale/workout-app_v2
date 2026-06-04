@@ -1216,7 +1216,7 @@ try:
         vel_str  = f8.text_input("Km/h *",             key=f"v_{fid}",    placeholder="es. 18.5")
         dist_str = f9.text_input("Km *",               key=f"dist_{fid}", placeholder="es. 12.3")
         cal_str  = f10.text_input("Calorie *",         key=f"cal_{fid}",  placeholder="es. 450")
-        temp_str = f11.text_input("Temp. Acqua (°C)", key=f"temp_{fid}", placeholder="es. 28")
+        temp_str = f11.text_input("Temp. Acqua (°C)", key=f"temp_{fid}", placeholder="es. 28 (opzionale)")
         vel  = force_numeric(vel_str)  if (vel_str or "").strip()  else None
         dist = force_numeric(dist_str) if (dist_str or "").strip() else None
         cal  = force_numeric(cal_str)  if (cal_str or "").strip()  else None
@@ -1247,8 +1247,6 @@ try:
                 errori.append("Livello (hai scelto 'Altro...' ma non hai specificato il valore)")
             if not any([vel, dist, cal]):
                 errori.append("almeno un valore tra Km/h, Km, Calorie deve essere > 0")
-            if temp is None:
-                errori.append("Temperatura Acqua (°C)")
 
             if errori:
                 st.error(f"Compila i campi obbligatori: {', '.join(errori)}")
