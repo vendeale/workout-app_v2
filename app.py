@@ -151,6 +151,37 @@ def fetch_all_data(id_foglio: str) -> list[dict]:
             result.append(clean)
     return result
 
+@st.cache_data(ttl=CACHE_TTL)
+def fetch_archivio_data(id_foglio: str) -> list[dict]:
+    """
+    Legge i dati storici dal foglio 'Archivio' con la stessa logica
+    di fetch_all_data. Cachato con lo stesso TTL.
+    Restituisce lista vuota se il foglio non esiste.
+    """
+    try:
+        client = get_gspread_client()
+        spreadsheet = client.open_by_key(id_foglio)
+        try:
+            sheet = spreadsheet.worksheet("Archivio")
+        except gspread.exceptions.WorksheetNotFound:
+            return []
+        raw = sheet.get("A:S", value_render_option="FORMATTED_VALUE")
+        if not raw or len(raw) < 2:
+            return []
+        headers = [str(h).strip() for h in raw[0]]
+        result  = []
+        for i, row in enumerate(raw[1:]):
+            padded = row + [""] * (len(headers) - len(row))
+            clean  = {headers[j]: padded[j] for j in range(len(headers))}
+            clean["GOOGLE_SHEET_ROW"] = i + GOOGLE_SHEET_OFFSET
+            clean["_fonte"] = "Archivio"
+            if clean.get("Nome") and str(clean.get("Nome")).strip():
+                result.append(clean)
+        return result
+    except Exception as e:
+        logger.error("Errore fetch archivio: %s", e)
+        return []
+
 # ---------------------------------------------------------------------------
 # ACCESSO AI DATI — QUADRATURA CASSA
 # ---------------------------------------------------------------------------
@@ -1142,16 +1173,39 @@ try:
     # ── 3. RICERCA E REPORT PDF ──────────────────────────────────────────
     st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=True):
-        col1, col2 = st.columns(2)
-        n_input = col1.text_input("Filtra Nome",    key="src_n", max_chars=MAX_INPUT_LEN)
-        c_input = col2.text_input("Filtra Cognome", key="src_c", max_chars=MAX_INPUT_LEN)
+        col1, col2, col3 = st.columns([2, 2, 1])
+        n_input        = col1.text_input("Filtra Nome",    key="src_n", max_chars=MAX_INPUT_LEN)
+        c_input        = col2.text_input("Filtra Cognome", key="src_c", max_chars=MAX_INPUT_LEN)
+        cerca_archivio = col3.checkbox("Cerca anche in Archivio", value=False,
+                                       help="Estende la ricerca al foglio 'Archivio' con i dati storici")
 
         if (n_input or c_input) and dati_raw:
+            # ── Ricerca nel foglio corrente ──────────────────────────────
             mask = (
                 df_norm["Nome"].astype(str).str.contains(n_input, case=False, na=False, regex=False)
                 & df_norm["Cognome"].astype(str).str.contains(c_input, case=False, na=False, regex=False)
             )
             res = df_norm[mask].copy()
+            n_corrente = len(res)
+
+            # ── Ricerca nell'Archivio (se richiesto) ─────────────────────
+            if cerca_archivio:
+                with st.spinner("Ricerca nell'Archivio in corso..."):
+                    dati_archivio = fetch_archivio_data(ID_FOGLIO)
+                if dati_archivio:
+                    df_arch = normalizza_numerici(pd.DataFrame(dati_archivio))
+                    mask_arch = (
+                        df_arch["Nome"].astype(str).str.contains(n_input, case=False, na=False, regex=False)
+                        & df_arch["Cognome"].astype(str).str.contains(c_input, case=False, na=False, regex=False)
+                    )
+                    res_arch = df_arch[mask_arch].copy()
+                    n_archivio = len(res_arch)
+                    # Unisci i risultati
+                    res = pd.concat([res, res_arch], ignore_index=True)
+                    if n_archivio > 0:
+                        st.info(f"📦 Trovati **{n_corrente}** record nel foglio corrente e **{n_archivio}** nell'Archivio storico.")
+                else:
+                    st.warning("Il foglio 'Archivio' non esiste o è vuoto.")
 
             if not res.empty:
                 c_data_col = get_exact_col(res.columns, "DATA")
