@@ -29,7 +29,7 @@ st.set_page_config(
 ID_FOGLIO           = st.secrets["ID_FOGLIO"]
 COLONNE_NASCOSTE    = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
 GOOGLE_SHEET_OFFSET = 2
-CACHE_TTL           = 600
+CACHE_TTL           = 1800  # 30 minuti — riduce le chiamate API su fogli grandi
 CLIENT_TTL          = 3000
 MAX_PDF_PROG_LEN    = 22
 MAX_PDF_LIV_LEN     = 20
@@ -126,14 +126,28 @@ def get_spreadsheet():
 
 @st.cache_data(ttl=CACHE_TTL)
 def fetch_all_data(id_foglio: str) -> list[dict]:
+    """
+    Legge i dati usando sheet.get() su range limitato invece di
+    get_all_records() che scarica l'intero foglio.
+    Su 69.000 righe questo riduce significativamente i dati trasferiti.
+    Range A:S: copre Nome, Cognome, Data, Sessione, Programma, Livello,
+    Km/h, Km, Calorie, Sede, Temperatura Acqua, Note + margine.
+    FORMATTED_VALUE restituisce stringhe già formattate (es. "18,7")
+    evitando la conversione automatica che causava "18,7" → 171.
+    """
     client = get_gspread_client()
     sheet  = client.open_by_key(id_foglio).sheet1
-    data   = sheet.get_all_records(numericise_ignore=['all'])
-    result = []
-    for i, row in enumerate(data):
-        clean = {str(k).strip(): v for k, v in row.items()}
+    raw    = sheet.get("A:S", value_render_option="FORMATTED_VALUE")
+    if not raw or len(raw) < 2:
+        return []
+    headers = [str(h).strip() for h in raw[0]]
+    result  = []
+    for i, row in enumerate(raw[1:]):
+        # Padding: se la riga ha meno colonne degli header riempi con ""
+        padded = row + [""] * (len(headers) - len(row))
+        clean  = {headers[j]: padded[j] for j in range(len(headers))}
         clean["GOOGLE_SHEET_ROW"] = i + GOOGLE_SHEET_OFFSET
-        if clean.get("Nome") and str(clean["Nome"]).strip():
+        if clean.get("Nome") and str(clean.get("Nome")).strip():
             result.append(clean)
     return result
 
@@ -1213,10 +1227,10 @@ try:
 
         st.write("---")
         f8, f9, f10, f11 = st.columns(4)
-        vel_str  = f8.text_input("Km/h *",             key=f"v_{fid}",    placeholder="es. 18.5")
-        dist_str = f9.text_input("Km *",               key=f"dist_{fid}", placeholder="es. 12.3")
-        cal_str  = f10.text_input("Calorie *",         key=f"cal_{fid}",  placeholder="es. 450")
-        temp_str = f11.text_input("Temp. Acqua (°C)", key=f"temp_{fid}", placeholder="es. 28 (opzionale)")
+        vel_str  = f8.text_input("Km/h *",              key=f"v_{fid}",    placeholder="es. 18.5")
+        dist_str = f9.text_input("Km *",                key=f"dist_{fid}", placeholder="es. 12.3")
+        cal_str  = f10.text_input("Calorie *",          key=f"cal_{fid}",  placeholder="es. 450")
+        temp_str = f11.text_input("Temp. Acqua (°C)",  key=f"temp_{fid}", placeholder="es. 28 (opzionale)")
         vel  = force_numeric(vel_str)  if (vel_str or "").strip()  else None
         dist = force_numeric(dist_str) if (dist_str or "").strip() else None
         cal  = force_numeric(cal_str)  if (cal_str or "").strip()  else None
