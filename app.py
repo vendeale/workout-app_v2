@@ -29,7 +29,7 @@ st.set_page_config(
 ID_FOGLIO           = st.secrets["ID_FOGLIO"]
 COLONNE_NASCOSTE    = ["FREQUENZA", "CARDIACA", "FC", "NASCITA", "DT"]
 GOOGLE_SHEET_OFFSET = 2
-CACHE_TTL           = 1800  # 30 minuti — riduce le chiamate API su fogli grandi
+CACHE_TTL           = 600
 CLIENT_TTL          = 3000
 MAX_PDF_PROG_LEN    = 22
 MAX_PDF_LIV_LEN     = 20
@@ -42,7 +42,6 @@ COL_KEYWORDS: dict = {
     "CALORIE":   lambda c: "CAL" in c or "KCAL" in c,
     "PROGRAMMA": lambda c: "PROGR" in c,
     "LIVELLO":   lambda c: "LIV" in c,
-    "TEMP":      lambda c: "TEMP" in c,
 }
 
 # ---------------------------------------------------------------------------
@@ -126,61 +125,16 @@ def get_spreadsheet():
 
 @st.cache_data(ttl=CACHE_TTL)
 def fetch_all_data(id_foglio: str) -> list[dict]:
-    """
-    Legge i dati usando sheet.get() su range limitato invece di
-    get_all_records() che scarica l'intero foglio.
-    Su 69.000 righe questo riduce significativamente i dati trasferiti.
-    Range A:S: copre Nome, Cognome, Data, Sessione, Programma, Livello,
-    Km/h, Km, Calorie, Sede, Temperatura Acqua, Note + margine.
-    FORMATTED_VALUE restituisce stringhe già formattate (es. "18,7")
-    evitando la conversione automatica che causava "18,7" → 171.
-    """
     client = get_gspread_client()
     sheet  = client.open_by_key(id_foglio).sheet1
-    raw    = sheet.get("A:S", value_render_option="FORMATTED_VALUE")
-    if not raw or len(raw) < 2:
-        return []
-    headers = [str(h).strip() for h in raw[0]]
-    result  = []
-    for i, row in enumerate(raw[1:]):
-        # Padding: se la riga ha meno colonne degli header riempi con ""
-        padded = row + [""] * (len(headers) - len(row))
-        clean  = {headers[j]: padded[j] for j in range(len(headers))}
+    data   = sheet.get_all_records(numericise_ignore=['all'])
+    result = []
+    for i, row in enumerate(data):
+        clean = {str(k).strip(): v for k, v in row.items()}
         clean["GOOGLE_SHEET_ROW"] = i + GOOGLE_SHEET_OFFSET
-        if clean.get("Nome") and str(clean.get("Nome")).strip():
+        if clean.get("Nome") and str(clean["Nome"]).strip():
             result.append(clean)
     return result
-
-@st.cache_data(ttl=CACHE_TTL)
-def fetch_archivio_data(id_foglio: str) -> list[dict]:
-    """
-    Legge i dati storici dal foglio 'Archivio' con la stessa logica
-    di fetch_all_data. Cachato con lo stesso TTL.
-    Restituisce lista vuota se il foglio non esiste.
-    """
-    try:
-        client = get_gspread_client()
-        spreadsheet = client.open_by_key(id_foglio)
-        try:
-            sheet = spreadsheet.worksheet("Archivio")
-        except gspread.exceptions.WorksheetNotFound:
-            return []
-        raw = sheet.get("A:S", value_render_option="FORMATTED_VALUE")
-        if not raw or len(raw) < 2:
-            return []
-        headers = [str(h).strip() for h in raw[0]]
-        result  = []
-        for i, row in enumerate(raw[1:]):
-            padded = row + [""] * (len(headers) - len(row))
-            clean  = {headers[j]: padded[j] for j in range(len(headers))}
-            clean["GOOGLE_SHEET_ROW"] = i + GOOGLE_SHEET_OFFSET
-            clean["_fonte"] = "Archivio"
-            if clean.get("Nome") and str(clean.get("Nome")).strip():
-                result.append(clean)
-        return result
-    except Exception as e:
-        logger.error("Errore fetch archivio: %s", e)
-        return []
 
 # ---------------------------------------------------------------------------
 # ACCESSO AI DATI — QUADRATURA CASSA
@@ -433,9 +387,9 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
         pdf.cell(64, 10, f"KCAL MEDIE: {cal_avg:.0f}",      1, 1, "C", True)
         pdf.ln(5)
 
-        # Larghezze: 22+35+30+13+13+17+15+35 = 180mm (entro margini A4)
-        col_widths = [22, 35, 30, 13, 13, 17, 15, 35]
-        headers    = ["Data", "Programma", "Livello", "Km", "Km/h", "Cal.", "T.C", "Note"]
+        # Larghezze: 25+40+35+15+15+20+40 = 190mm (entro margini A4)
+        col_widths = [25, 40, 35, 15, 15, 20, 40]
+        headers    = ["Data", "Programma", "Livello", "Km", "Km/h", "Cal.", "Note"]
         pdf.set_font("helvetica", "B", 9)
         pdf.set_fill_color(0, 80, 158)
         pdf.set_text_color(255, 255, 255)
@@ -443,11 +397,10 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
             pdf.cell(w, 8, h, 1, 0, "C", True)
         pdf.ln()
 
-        # Trova colonne Note e Temperatura
+        # Trova colonna Note (ricerca esatta o per nome)
         c_note = next(
             (c for c in cols if str(c).strip().upper() == "NOTE"), None
         )
-        c_temp = get_exact_col(cols, "TEMP")
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", "", 8)
         for _, row in df_atleta.iterrows():
@@ -461,16 +414,14 @@ def generate_pdf(df_atleta: pd.DataFrame, nome_atleta: str) -> bytes | None:
                 except ValueError:
                     solo_data = data_str
 
-            note_val = str(row.get(c_note, ""))[:32] if c_note else ""
-            temp_val = str(row.get(c_temp, "")) if c_temp else ""
+            note_val = str(row.get(c_note, ""))[:38] if c_note else ""
             pdf.cell(col_widths[0], 7, solo_data,                                    1, 0, "C")
             pdf.cell(col_widths[1], 7, str(row.get(c_prog, ""))[:MAX_PDF_PROG_LEN], 1, 0, "L")
             pdf.cell(col_widths[2], 7, str(row.get(c_liv,  ""))[:MAX_PDF_LIV_LEN],  1, 0, "L")
             pdf.cell(col_widths[3], 7, str(row.get(c_km,   "0")),                   1, 0, "C")
             pdf.cell(col_widths[4], 7, str(row.get(c_kmh,  "0")),                   1, 0, "C")
             pdf.cell(col_widths[5], 7, str(row.get(c_cal,  "0")),                   1, 0, "C")
-            pdf.cell(col_widths[6], 7, temp_val,                                     1, 0, "C")
-            pdf.cell(col_widths[7], 7, note_val,                                     1, 1, "L")
+            pdf.cell(col_widths[6], 7, note_val,                                     1, 1, "L")
 
         out = pdf.output()
         return bytes(out) if isinstance(out, bytearray) else out
@@ -1173,39 +1124,16 @@ try:
     # ── 3. RICERCA E REPORT PDF ──────────────────────────────────────────
     st.divider()
     with st.expander("🔍 **RICERCA ATLETA E REPORT PDF**", expanded=True):
-        col1, col2, col3 = st.columns([2, 2, 1])
-        n_input        = col1.text_input("Filtra Nome",    key="src_n", max_chars=MAX_INPUT_LEN)
-        c_input        = col2.text_input("Filtra Cognome", key="src_c", max_chars=MAX_INPUT_LEN)
-        cerca_archivio = col3.checkbox("Cerca anche in Archivio", value=False,
-                                       help="Estende la ricerca al foglio 'Archivio' con i dati storici")
+        col1, col2 = st.columns(2)
+        n_input = col1.text_input("Filtra Nome",    key="src_n", max_chars=MAX_INPUT_LEN)
+        c_input = col2.text_input("Filtra Cognome", key="src_c", max_chars=MAX_INPUT_LEN)
 
         if (n_input or c_input) and dati_raw:
-            # ── Ricerca nel foglio corrente ──────────────────────────────
             mask = (
                 df_norm["Nome"].astype(str).str.contains(n_input, case=False, na=False, regex=False)
                 & df_norm["Cognome"].astype(str).str.contains(c_input, case=False, na=False, regex=False)
             )
             res = df_norm[mask].copy()
-            n_corrente = len(res)
-
-            # ── Ricerca nell'Archivio (se richiesto) ─────────────────────
-            if cerca_archivio:
-                with st.spinner("Ricerca nell'Archivio in corso..."):
-                    dati_archivio = fetch_archivio_data(ID_FOGLIO)
-                if dati_archivio:
-                    df_arch = normalizza_numerici(pd.DataFrame(dati_archivio))
-                    mask_arch = (
-                        df_arch["Nome"].astype(str).str.contains(n_input, case=False, na=False, regex=False)
-                        & df_arch["Cognome"].astype(str).str.contains(c_input, case=False, na=False, regex=False)
-                    )
-                    res_arch = df_arch[mask_arch].copy()
-                    n_archivio = len(res_arch)
-                    # Unisci i risultati
-                    res = pd.concat([res, res_arch], ignore_index=True)
-                    if n_archivio > 0:
-                        st.info(f"📦 Trovati **{n_corrente}** record nel foglio corrente e **{n_archivio}** nell'Archivio storico.")
-                else:
-                    st.warning("Il foglio 'Archivio' non esiste o è vuoto.")
 
             if not res.empty:
                 c_data_col = get_exact_col(res.columns, "DATA")
@@ -1280,15 +1208,13 @@ try:
         ) if liv_sel == "Altro..." else liv_sel
 
         st.write("---")
-        f8, f9, f10, f11 = st.columns(4)
-        vel_str  = f8.text_input("Km/h *",              key=f"v_{fid}",    placeholder="es. 18.5")
-        dist_str = f9.text_input("Km *",                key=f"dist_{fid}", placeholder="es. 12.3")
-        cal_str  = f10.text_input("Calorie *",          key=f"cal_{fid}",  placeholder="es. 450")
-        temp_str = f11.text_input("Temp. Acqua (°C)",  key=f"temp_{fid}", placeholder="es. 28 (opzionale)")
+        f8, f9, f10 = st.columns(3)
+        vel_str  = f8.text_input("Km/h *",    key=f"v_{fid}",    placeholder="es. 18.5")
+        dist_str = f9.text_input("Km *",      key=f"dist_{fid}", placeholder="es. 12.3")
+        cal_str  = f10.text_input("Calorie *",key=f"cal_{fid}",  placeholder="es. 450")
         vel  = force_numeric(vel_str)  if (vel_str or "").strip()  else None
         dist = force_numeric(dist_str) if (dist_str or "").strip() else None
         cal  = force_numeric(cal_str)  if (cal_str or "").strip()  else None
-        temp = force_numeric(temp_str) if (temp_str or "").strip() else None
 
         note_ins = st.text_area("Note", key=f"note_{fid}", max_chars=256,
                                placeholder="Note aggiuntive (max 256 caratteri)...")
@@ -1333,7 +1259,7 @@ try:
                             sanifica(f_liv),
                             _nv(vel), _nv(dist), _nv(cal),
                             sanifica(sede_ins),
-                            0, 0, 0, _nv(temp), sanifica(note_ins)
+                            0, 0, 0, sanifica(note_ins)
                         ]
                         ok = _retry(sheet.append_row, riga)
                         if ok:
@@ -1366,6 +1292,158 @@ try:
                 df_rec_disp[c_data_g] = df_rec_disp[c_data_g].dt.strftime("%d/%m/%Y")
                 st.dataframe(df_rec_disp, use_container_width=True)
 
+                # ── MODIFICA RIGA ─────────────────────────────────────────
+                with st.expander("✏️ Modifica una riga dall'archivio"):
+                    righe_mod = [
+                        {
+                            "label":      f"{r[c_data_g].strftime('%d/%m/%Y')} — {r['Nome']} {r['Cognome']}",
+                            "row_number": r["GOOGLE_SHEET_ROW"],
+                        }
+                        for _, r in df_recenti.iterrows()
+                    ]
+
+                    mod_idx = st.selectbox(
+                        "Seleziona la sessione da modificare:",
+                        range(len(righe_mod)),
+                        format_func=lambda i: righe_mod[i]["label"],
+                        index=None,
+                        key="sel_modifica"
+                    )
+
+                    if mod_idx is not None:
+                        row_number_mod = righe_mod[mod_idx]["row_number"]
+                        rows_list      = list(df_recenti.iterrows())
+                        _, r_cur       = rows_list[mod_idx]
+                        cols_rec       = df_recenti.columns.tolist()
+
+                        c_kmh_m  = get_exact_col(cols_rec, "KMH")
+                        c_km_m   = get_exact_col(cols_rec, "KM")
+                        c_cal_m  = get_exact_col(cols_rec, "CALORIE")
+                        c_prog_m = get_exact_col(cols_rec, "PROGRAMMA")
+                        c_liv_m  = get_exact_col(cols_rec, "LIVELLO")
+                        c_temp_m = get_exact_col(cols_rec, "TEMP")
+                        c_note_m = next((c for c in cols_rec if str(c).strip().upper() == "NOTE"), None)
+                        c_sede_m = next((c for c in cols_rec if "SEDE" in str(c).upper()), None)
+                        c_sess_m = next((c for c in cols_rec
+                                         if "SESS" in str(c).upper() or "DUR" in str(c).upper()), None)
+
+                        cur_nome    = str(r_cur.get("Nome",    ""))
+                        cur_cognome = str(r_cur.get("Cognome", ""))
+                        cur_sede    = str(r_cur.get(c_sede_m,  "")) if c_sede_m else "Prati"
+                        cur_data_s  = str(r_cur.get(c_data_g,  ""))
+                        cur_sess    = str(r_cur.get(c_sess_m,  "")) if c_sess_m else ""
+                        cur_prog    = str(r_cur.get(c_prog_m,  "")) if c_prog_m else ""
+                        cur_liv     = str(r_cur.get(c_liv_m,   "")) if c_liv_m  else ""
+                        cur_kmh     = str(r_cur.get(c_kmh_m,   "")) if c_kmh_m  else ""
+                        cur_km      = str(r_cur.get(c_km_m,    "")) if c_km_m   else ""
+                        cur_cal     = str(r_cur.get(c_cal_m,   "")) if c_cal_m  else ""
+                        cur_temp    = str(r_cur.get(c_temp_m,  "")) if c_temp_m else ""
+                        cur_note    = str(r_cur.get(c_note_m,  "")) if c_note_m else ""
+
+                        try:
+                            cur_date_val = datetime.strptime(cur_data_s.strip(), "%d/%m/%Y").date()
+                        except ValueError:
+                            cur_date_val = datetime.today().date()
+
+                        st.info(f"Stai modificando: **{cur_nome} {cur_cognome}** — {cur_data_s}")
+
+                        with st.container(border=True):
+                            st.markdown("**Modifica i campi che vuoi aggiornare, poi clicca Salva Modifiche.**")
+
+                            m1, m2, m3 = st.columns(3)
+                            mod_nome    = m1.text_input("Nome *",    value=cur_nome,    key="mod_nome",    max_chars=MAX_INPUT_LEN)
+                            mod_cognome = m2.text_input("Cognome *", value=cur_cognome, key="mod_cognome", max_chars=MAX_INPUT_LEN)
+                            sedi_list   = ["Prati", "Corso Trieste"]
+                            mod_sede    = m3.selectbox(
+                                "Sede *", sedi_list,
+                                index=sedi_list.index(cur_sede) if cur_sede in sedi_list else 0,
+                                key="mod_sede"
+                            )
+
+                            md1, md2 = st.columns(2)
+                            mod_data = md1.date_input("Data *", value=cur_date_val,
+                                                      format="DD/MM/YYYY", key="mod_data")
+                            mod_sess = md2.text_input("Sessione", value=cur_sess,
+                                                      key="mod_sess", max_chars=MAX_INPUT_LEN)
+
+                            mp1, mp2 = st.columns(2)
+                            mod_prog = mp1.text_input("Programma", value=cur_prog,
+                                                      key="mod_prog", max_chars=MAX_INPUT_LEN)
+                            mod_liv  = mp2.text_input("Livello",   value=cur_liv,
+                                                      key="mod_liv",  max_chars=MAX_INPUT_LEN)
+
+                            mn1, mn2, mn3, mn4 = st.columns(4)
+                            mod_kmh  = mn1.text_input("Km/h",              value=cur_kmh,  key="mod_kmh")
+                            mod_km   = mn2.text_input("Km",                value=cur_km,   key="mod_km")
+                            mod_cal  = mn3.text_input("Calorie",           value=cur_cal,  key="mod_cal")
+                            mod_temp = mn4.text_input("Temp. Acqua (C)", value=cur_temp, key="mod_temp")
+
+                            mod_note = st.text_area("Note", value=cur_note,
+                                                    key="mod_note", max_chars=256)
+
+                            col_salva_m, col_ann_m = st.columns(2)
+                            if col_salva_m.button("💾 Salva Modifiche", use_container_width=True,
+                                                  key="btn_mod_salva"):
+                                errori_m = []
+                                if not mod_nome:    errori_m.append("Nome")
+                                if not mod_cognome: errori_m.append("Cognome")
+                                if not any([(mod_kmh or "").strip(),
+                                            (mod_km  or "").strip(),
+                                            (mod_cal or "").strip()]):
+                                    errori_m.append("almeno un valore tra Km/h, Km, Calorie")
+
+                                if errori_m:
+                                    st.error(f"Compila i campi obbligatori: {', '.join(errori_m)}")
+                                else:
+                                    with st.spinner("Salvataggio modifiche in corso..."):
+                                        try:
+                                            sheet_m = get_sheet()
+                                            orig    = sheet_m.row_values(row_number_mod)
+                                            while len(orig) < 18:
+                                                orig.append("")
+
+                                            updated_row = [
+                                                sanifica(f"{mod_nome} {mod_cognome}"),        # A
+                                                sanifica(mod_nome),                           # B
+                                                sanifica(mod_cognome),                        # C
+                                                orig[3],                                      # D (preservato)
+                                                orig[4],                                      # E (preservato)
+                                                mod_data.strftime("%d/%m/%Y"),                # F
+                                                sanifica(mod_sess),                           # G
+                                                sanifica(mod_prog),                           # H
+                                                sanifica(mod_liv),                            # I
+                                                _nv(mod_kmh), _nv(mod_km), _nv(mod_cal),     # J K L
+                                                sanifica(mod_sede),                           # M
+                                                orig[13],                                     # N (preservato)
+                                                orig[14],                                     # O (preservato)
+                                                orig[15],                                     # P (preservato)
+                                                _nv(mod_temp),                                # Q
+                                                sanifica(mod_note),                           # R
+                                            ]
+
+                                            ok = _retry(
+                                                sheet_m.update,
+                                                f"A{row_number_mod}:R{row_number_mod}",
+                                                [updated_row]
+                                            )
+                                            if ok:
+                                                del st.session_state["sel_modifica"]
+                                                fetch_all_data.clear()
+                                                invalida_df_cache()
+                                                st.success("✅ Riga modificata correttamente!")
+                                                st.rerun()
+                                            else:
+                                                st.error("❌ Modifica fallita. Riprova.")
+                                        except Exception as e:
+                                            logger.error("Errore modifica riga: %s", e)
+                                            st.error(f"Errore durante la modifica: {e}")
+
+                            if col_ann_m.button("❌ Annulla", use_container_width=True,
+                                                key="btn_mod_ann"):
+                                del st.session_state["sel_modifica"]
+                                st.rerun()
+
+                # ── CANCELLA RIGA ─────────────────────────────────────────
                 with st.expander("🗑️ Cancella una riga dall'archivio"):
                     opzioni = [
                         {
